@@ -124,6 +124,9 @@ def do_poll(source: str) -> None:
     conn = connect()
     try:
         if source == "footballdata":
+            if not config.FOOTBALLDATA_API_KEY:
+                log("No FOOTBALLDATA_API_KEY configured — nothing to poll; exiting cleanly.")
+                return
             counts = footballdata.sync(conn, footballdata.fetch_raw())
             log(f"Poll via football-data.org: {counts}")
         elif source.startswith("fdfile:"):
