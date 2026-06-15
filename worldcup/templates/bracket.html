@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% block title %}My bracket{% endblock %}
+{% block body %}
+<section class="hero compact">
+  <h1>{{ member.bracket_name }}</h1>
+  <div class="score-pills">
+    <span class="pill"><b>{{ my.total }}</b> points</span>
+    <span class="pill avail"><b>+{{ my.available }}</b> still available</span>
+    <span class="pill muted"><b>{{ my.ceiling }}</b> ceiling</span>
+  </div>
+  <p class="sub">Pick who <b>advances out of each round</b>. Fill left-to-right — each round
+     offers the teams you advanced in the round before. Save each column.</p>
+</section>
+
+<div class="bracket-cols">
+  {% for layer in layers %}
+    {% set r = layer.round %}
+    {% set locked = locks.rounds.get(r) %}
+    {% set chosen = adv[r] %}
+    <form method="post" action="/bracket/{{ r }}" class="card col {{ 'locked' if locked }}" data-max="{{ layer.size }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf }}">
+      <div class="col-head">
+        <h3>{{ layer.label }}</h3>
+        <div class="col-meta">
+          <span class="tag">{{ chosen|length }}/{{ layer.size }}</span>
+          <span class="tag tag-pts">{{ layer.value }} pt{{ 's' if layer.value != 1 }}</span>
+          {% if locked %}<span class="tag tag-lock">Locked</span>{% endif %}
+        </div>
+      </div>
+      {% if pools[r] %}
+      <ul class="options">
+        {% for t in pools[r] %}
+          {% set elim = not state.alive(t.id) %}
+          {% set reached = t.id in state.reached[r] %}
+          <li>
+            <label class="opt {{ 'elim' if elim }} {{ 'hit' if reached }}">
+              <input type="checkbox" name="team" value="{{ t.id }}"
+                     {{ 'checked' if t.id in chosen }} {{ 'disabled' if locked }}>
+              <span>{{ t.name }}{% if t.grp %} <i class="grp">{{ t.grp }}</i>{% endif %}</span>
+              {% if reached %}<span class="mark ok">✓</span>{% elif elim %}<span class="mark out">out</span>{% endif %}
+            </label>
+          </li>
+        {% endfor %}
+      </ul>
+      {% if not locked %}<button class="save" type="submit">Save {{ layer.label }}</button>{% endif %}
+      {% else %}
+        <p class="empty small">Make your {{ layers[loop.index0 - 1].label }} picks first.</p>
+      {% endif %}
+    </form>
+  {% endfor %}
+</div>
+
+<script>
+document.querySelectorAll('form.col:not(.locked)').forEach(f => {
+  const max = parseInt(f.dataset.max, 10);
+  f.addEventListener('change', () => {
+    const boxes = [...f.querySelectorAll('input[name=team]')];
+    const checked = boxes.filter(b => b.checked);
+    boxes.forEach(b => { if (!b.checked) b.disabled = checked.length >= max; });
+  });
+  f.dispatchEvent(new Event('change'));
+});
+</script>
+{% endblock %}

@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block title %}{{ pool.name }}{% endblock %}
+{% block body %}
+<section class="hero">
+  <h1>{{ pool.name }}</h1>
+  <p class="sub">Predict the group stage and fill your knockout bracket. Points double each
+     round — 1 for the Round of 32 up to 16 for naming the champion.</p>
+</section>
+
+<section class="card">
+  <h2>Leaderboard</h2>
+  {% if board %}
+  <table class="board">
+    <thead>
+      <tr><th>#</th><th>Bracket</th><th class="num">Points</th><th class="num">Still available</th><th class="num">Ceiling</th></tr>
+    </thead>
+    <tbody>
+    {% for s in board %}
+      <tr>
+        <td class="rank">{{ loop.index }}</td>
+        <td class="name">{{ s.bracket_name }}</td>
+        <td class="num strong">{{ s.total }}</td>
+        <td class="num avail">+{{ s.available }}</td>
+        <td class="num muted">{{ s.ceiling }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="empty">No brackets yet. <a href="/join">Be the first to join →</a></p>
+  {% endif %}
+</section>
+
+<section class="card scoring">
+  <h2>How scoring works</h2>
+  <ul class="legend">
+    <li><b>Group stage:</b> 2 pts for each of the 2 teams you correctly pick to advance from a group.</li>
+    {% for l in layers %}
+      <li><b>{{ l.label }}:</b> {{ l.value }} pt{{ 's' if l.value != 1 }} per correct pick ({{ l.size }} pick{{ 's' if l.size != 1 }}).</li>
+    {% endfor %}
+  </ul>
+  <p class="muted small"><b>Still available</b> = the most you can still earn from picks that
+     are alive and not yet decided. <b>Ceiling</b> = points + still available.</p>
+</section>
+{% endblock %}

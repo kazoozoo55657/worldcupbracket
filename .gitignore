@@ -1,0 +1,11 @@
+__pycache__/
+*.pyc
+*.db
+*.db-wal
+*.db-shm
+.venv/
+worldcup-venv/
+*.log
+.env
+data/
+.pytest_cache/

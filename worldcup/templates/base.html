@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}World Cup 2026 Pool{% endblock %}</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <script src="https://unpkg.com/htmx.org@1.9.12" defer></script>
+</head>
+<body>
+<header class="topbar">
+  <a class="brand" href="/">⚽ <span>World&nbsp;Cup&nbsp;2026</span> Pool</a>
+  <nav>
+    <a href="/">Home</a>
+    {% if session %}
+      <a href="/groups">Groups</a>
+      <a href="/bracket">My Bracket</a>
+      {% if session.a %}<a href="/admin">Admin</a>{% endif %}
+      <form class="inline" method="post" action="/logout">
+        <input type="hidden" name="csrf_token" value="{{ csrf }}">
+        <button class="linkish" type="submit">Log out</button>
+      </form>
+    {% else %}
+      <a href="/login">Log in</a>
+      <a class="cta" href="/join">Join</a>
+    {% endif %}
+  </nav>
+</header>
+<main>
+  {% block body %}{% endblock %}
+</main>
+<footer class="foot">Hosted on Yggdrasil · picks lock at kickoff</footer>
+</body>
+</html>

@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+{% block title %}Admin · results{% endblock %}
+{% block body %}
+<section class="hero compact">
+  <h1>Match results</h1>
+  <p class="sub">Enter or correct a result. Saving locks the row so the auto-poller won't
+     overwrite it — use <b>Release</b> to hand it back to the feed.</p>
+</section>
+
+<div class="admin-list">
+  {% for m in matches %}
+    <form method="post" action="/admin/match/{{ m.id }}" class="card admin-row {{ 'overridden' if m.result_locked }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf }}">
+      <div class="ar-head">
+        <span class="tag">{{ m.round }}</span>
+        <span class="ar-slot">{{ m.slot or '' }}</span>
+        <span class="ar-time">{{ m.kickoff_at }}</span>
+        <span class="tag {{ 'tag-lock' if m.result_locked }}">{{ m.status }}{{ ' · admin' if m.result_locked }}</span>
+      </div>
+      <div class="ar-grid">
+        <label>Home
+          <select name="home_team_id">
+            <option value="0">— TBD —</option>
+            {% for tid, t in teams.items() %}
+              <option value="{{ tid }}" {{ 'selected' if m.home_team_id == tid }}>{{ t.name }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <label class="sc">Score
+          <input name="home_score" inputmode="numeric" value="{{ m.home_score if m.home_score is not none else '' }}">
+        </label>
+        <label class="sc">&nbsp;
+          <input name="away_score" inputmode="numeric" value="{{ m.away_score if m.away_score is not none else '' }}">
+        </label>
+        <label>Away
+          <select name="away_team_id">
+            <option value="0">— TBD —</option>
+            {% for tid, t in teams.items() %}
+              <option value="{{ tid }}" {{ 'selected' if m.away_team_id == tid }}>{{ t.name }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <label>Winner
+          <select name="winner_team_id">
+            <option value="0">— none / draw —</option>
+            {% for tid, t in teams.items() %}
+              <option value="{{ tid }}" {{ 'selected' if m.winner_team_id == tid }}>{{ t.name }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <label class="chk"><input type="checkbox" name="went_to_pens" {{ 'checked' if m.went_to_pens }}> pens</label>
+        <label>Status
+          <select name="status">
+            {% for s in ['SCHEDULED','LIVE','FINISHED'] %}
+              <option value="{{ s }}" {{ 'selected' if m.status == s }}>{{ s }}</option>
+            {% endfor %}
+          </select>
+        </label>
+      </div>
+      <div class="ar-actions">
+        <button class="primary" type="submit">Save &amp; lock</button>
+      </div>
+    </form>
+    {% if m.result_locked %}
+    <form method="post" action="/admin/match/{{ m.id }}/release" class="inline release">
+      <input type="hidden" name="csrf_token" value="{{ csrf }}">
+      <button class="linkish" type="submit">Release to auto-poll</button>
+    </form>
+    {% endif %}
+  {% endfor %}
+</div>
+{% endblock %}

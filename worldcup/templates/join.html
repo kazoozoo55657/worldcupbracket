@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block title %}Join the pool{% endblock %}
+{% block body %}
+<section class="card narrow">
+  <h1>Create your bracket</h1>
+  {% if error %}<p class="error">{{ error }}</p>{% endif %}
+  <form method="post" action="/join" class="stack">
+    <input type="hidden" name="csrf_token" value="{{ csrf }}">
+    <label>Join code
+      <input name="code" value="{{ prefill_code }}" required autocomplete="off">
+    </label>
+    <label>Bracket name <span class="hint">(unique — this is your team name)</span>
+      <input name="bracket_name" required maxlength="40" placeholder="e.g. Goal Diggers">
+    </label>
+    <label>PIN <span class="hint">(4–6 digits — you'll use this to log back in)</span>
+      <input name="pin" inputmode="numeric" pattern="\d{4,6}" required autocomplete="off">
+    </label>
+    <button type="submit" class="primary">Create bracket</button>
+  </form>
+  <p class="muted">Already have one? <a href="/login">Log in</a>.</p>
+</section>
+{% endblock %}
