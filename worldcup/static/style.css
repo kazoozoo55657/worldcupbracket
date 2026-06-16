@@ -83,6 +83,9 @@ button.primary, button.save {
   padding: 10px 16px; font-weight: 800; cursor: pointer;
 }
 button.save { background: var(--accent-2); color: #021126; }
+button.danger { background: transparent; color: var(--bad); border: 1px solid var(--bad);
+                border-radius: 8px; padding: 5px 12px; font-weight: 700; cursor: pointer; }
+button.danger:hover { background: rgba(255,107,107,.14); }
 button.primary:hover, button.save:hover { filter: brightness(1.06); }
 
 .score-pills { display: flex; gap: 10px; flex-wrap: wrap; margin: 10px 0; }

@@ -357,13 +357,26 @@ def admin_login_submit(request: Request, pin: str = Form(""), csrf_token: str = 
 def admin_page(request: Request, _: dict = Depends(require_admin)):
     with db() as conn:
         teams = repo.teams_by_id(conn)
+        members = repo.all_members(conn)
         matches = sorted(
             repo.all_matches(conn),
             key=lambda m: (parse_iso(m["kickoff_at"]), m["round"]),
         )
     return templates.TemplateResponse(
-        "admin.html", ctx(request, matches=matches, teams=teams, round_order=["GROUP"] + KNOCKOUT_ROUNDS)
+        "admin.html", ctx(request, matches=matches, teams=teams, members=members,
+                          round_order=["GROUP"] + KNOCKOUT_ROUNDS)
     )
+
+
+@app.post("/admin/member/{member_id}/delete")
+def admin_delete_member(request: Request, member_id: int, csrf_token: str = Form(""),
+                        _: dict = Depends(require_admin)):
+    check_csrf(request, csrf_token)
+    with db() as conn:
+        # is_admin=0 guard so the admin account can't be deleted; picks cascade.
+        conn.execute("DELETE FROM member WHERE id = ? AND is_admin = 0", (member_id,))
+        conn.commit()
+    return RedirectResponse("/admin", status_code=303)
 
 
 @app.post("/admin/match/{match_id}")

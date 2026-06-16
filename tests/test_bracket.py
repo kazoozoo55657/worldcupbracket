@@ -95,11 +95,15 @@ def test_flags():
     assert flags.code_of("England") == "gb-eng"
 
 
-def test_locks_disabled():
-    """With ENFORCE_LOCKS off, nothing locks regardless of kickoff times."""
+def test_group_locks_only_when_complete():
+    """A group locks once all its matches are FINISHED; knockout never locks here."""
     from worldcup.locks import compute_locks
-    past = [{"round": "GROUP", "grp_code": "A", "kickoff_at": "2020-01-01T00:00:00Z"},
-            {"round": "R32", "grp_code": None, "kickoff_at": "2020-01-01T00:00:00Z"}]
-    locks = compute_locks(past)
-    assert locks["groups"]["A"] is False
-    assert locks["rounds"]["R32"] is False
+    ms = [{"round": "GROUP", "grp_code": "A", "status": "FINISHED"},
+          {"round": "GROUP", "grp_code": "A", "status": "FINISHED"},
+          {"round": "GROUP", "grp_code": "B", "status": "FINISHED"},
+          {"round": "GROUP", "grp_code": "B", "status": "SCHEDULED"},
+          {"round": "R32", "grp_code": None, "status": "SCHEDULED"}]
+    locks = compute_locks(ms)
+    assert locks["groups"]["A"] is True     # complete -> locked
+    assert locks["groups"]["B"] is False    # still has a game left -> open
+    assert locks["rounds"]["R32"] is False  # knockout stays open
