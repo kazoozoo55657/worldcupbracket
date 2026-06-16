@@ -14,8 +14,10 @@ KNOCKOUT_LAYERS = [
 KNOCKOUT_ROUNDS = [layer["round"] for layer in KNOCKOUT_LAYERS]
 LAYER_BY_ROUND = {layer["round"]: layer for layer in KNOCKOUT_LAYERS}
 
-# Group stage: points awarded per correctly-predicted advancing team.
-GROUP_POINTS_PER_QUALIFIER = 2
+# Group stage: a lighter, separate scoring track (the knockout is independent and
+# weighted more heavily). 1 pt per correctly-predicted advancing team -> 24 max,
+# vs the 80-pt knockout (~77% of points live in the knockout).
+GROUP_POINTS_PER_QUALIFIER = 1
 GROUP_QUALIFIERS_PER_GROUP = 2  # top 2 advance
 
 

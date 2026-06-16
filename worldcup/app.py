@@ -221,7 +221,6 @@ def _build_bracket_view(conn, member):
     teams = repo.teams_by_id(conn)
     medals = _medal_map(conn)
     ranked = repo.member_group_ranked(conn, member["id"])
-    slot_picks = repo.member_slot_picks(conn, member["id"])
     state = TournamentState.from_matches(matches_rows)
     my = score_member(state, member["id"], member["bracket_name"],
                       repo.member_group_picks(conn, member["id"]),
@@ -250,39 +249,33 @@ def _build_bracket_view(conn, member):
         t = teams.get(tid) if tid else None
         return tview(t, medals.get(tid)) if t else None
 
-    def third_options(no):
-        opts = []
-        for gc in bracket_structure.THIRD_PLACE_SLOTS[no]:
-            r = ranked.get(gc, {})
-            taken = {r.get("winner"), r.get("runner")}
-            for t in repo.teams_in_group(conn, gc):
-                if t["id"] not in taken:
-                    opts.append({"id": t["id"], "name": f'{t["name"]} ({gc})',
-                                 "emoji": flags.flag_emoji(t["name"])})
-        return opts
+    def side(no, which, tid):
+        if tid:
+            return {"team": disp(tid), "label": None}
+        if no in bracket_structure.NO_TO_R32:
+            spec = bracket_structure.NO_TO_R32[no]["home" if which == "home" else "away"]
+            return {"team": None, "label": _slot_label(spec)}
+        feed = bracket_structure.NO_TO_FED[no]["feeds"][0 if which == "home" else 1]
+        return {"team": None, "label": f"Winner M{feed}"}
 
-    rounds_ctx = []
-    for layer in KNOCKOUT_LAYERS:
-        rc, rlocked = layer["round"], locks["rounds"].get(layer["round"], False)
-        ms = []
-        for m in bracket_structure.ROUND_MATCHES[rc]:
-            no = m["no"]
-            h, a = participants.get(no, (None, None))
-            if rc == "R32":
-                home = {"team": disp(h), "label": _slot_label(m["home"]), "third": False}
-                is_third = m["away"][0] == "3"
-                away = {"team": disp(a), "label": _slot_label(m["away"]), "third": is_third,
-                        "slot_value": slot_picks.get(no) if is_third else None,
-                        "options": third_options(no) if is_third else None}
-            else:
-                home = {"team": disp(h), "label": f"Winner Match {m['feeds'][0]}", "third": False}
-                away = {"team": disp(a), "label": f"Winner Match {m['feeds'][1]}", "third": False}
-            ms.append({"no": no, "home": home, "away": away, "winner_id": winners.get(no),
-                       "can_pick": bool(h and a) and not rlocked, "locked": rlocked})
-        rounds_ctx.append({"code": rc, "label": layer["label"], "matches": ms})
+    def kmatch(no):
+        h, a = participants.get(no, (None, None))
+        rlocked = locks["rounds"].get(bracket_structure.round_of(no), False)
+        return {"no": no, "home": side(no, "home", h), "away": side(no, "away", a),
+                "winner_id": winners.get(no), "can_pick": bool(h and a) and not rlocked}
 
-    return dict(groups=groups_ctx, rounds=rounds_ctx, my=my,
-                ranking_date=rankings.RANKING_DATE)
+    def columns(spec):
+        return [{"round": rc, "label": LAYER_BY_ROUND[rc]["label"],
+                 "matches": [kmatch(n) for n in nos]} for rc, nos in spec]
+
+    final_no = bracket_structure.FINAL_MATCH["no"]
+    ko_open = any(any(participants.get(m["no"], (None, None))) for m in bracket_structure.R32_MATCHES)
+
+    return dict(groups=groups_ctx, my=my, ranking_date=rankings.RANKING_DATE,
+                ko_left=columns(bracket_structure.LEFT_COLUMNS),
+                ko_right=columns(bracket_structure.RIGHT_COLUMNS),
+                ko_final=kmatch(final_no), champion=disp(winners.get(final_no)),
+                ko_open=ko_open)
 
 
 @app.get("/groups")
@@ -314,12 +307,9 @@ async def save_bracket(request: Request, member: dict = Depends(require_member))
                                     _int(form.get(f"gw_{gc}")), _int(form.get(f"gr_{gc}")), locks)
             except repo.PickError:
                 pass  # ignore inconsistent group input; user can re-pick
-        # Third-place slot picks.
-        if not locks["rounds"].get("R32"):
-            for no in bracket_structure.THIRD_PLACE_SLOTS:
-                repo.set_slot_pick(conn, member["id"], no, _int(form.get(f"slot_{no}")))
-        # Match winners -> clean round-winner sets (frozen rounds keep existing picks).
-        gw, gr, slots = repo.member_fillers(conn, member["id"])
+        # Match winners are validated against the REAL R32 field (auto-filled from
+        # football-data), so the knockout is independent of group-stage picks.
+        gw, gr, slots = repo.actual_r32_fillers(conn)
         match_choice = {}
         for rc, mlist in bracket_structure.ROUND_MATCHES.items():
             locked = locks["rounds"].get(rc)

@@ -34,7 +34,8 @@
 <section class="card scoring">
   <h2>How scoring works</h2>
   <ul class="legend">
-    <li><b>Group stage:</b> 2 pts for each of the 2 teams you correctly pick to advance from a group.</li>
+    <li><b>Group stage:</b> 1 pt for each of the 2 teams you correctly pick to advance (24 max).</li>
+    <li class="muted small">The knockout is independent: the real 32 teams fill in from results, then you pick the winners —</li>
     {% for l in layers %}
       <li><b>{{ l.label }}:</b> {{ l.value }} pt{{ 's' if l.value != 1 }} per correct pick ({{ l.size }} pick{{ 's' if l.size != 1 }}).</li>
     {% endfor %}

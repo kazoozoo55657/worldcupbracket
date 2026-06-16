@@ -33,12 +33,12 @@ def test_group_scoring_partial_and_full():
           gm("A", 2, 4, 3, 0), gm("A", 1, 4, 2, 0), gm("A", 2, 3, 1, 1)]
     st = TournamentState.from_matches(ms)
     assert st.group_complete["A"] is True
-    # picked both correct advancers -> 4 pts
+    # picked both correct advancers -> 2 pts (1 each)
     s = score_member(st, 1, "x", {"A": {1, 2}}, {})
-    assert s.group_earned == 4 and s.group_available == 0
-    # one right, one wrong -> 2 pts
+    assert s.group_earned == 2 and s.group_available == 0
+    # one right, one wrong -> 1 pt
     s2 = score_member(st, 2, "y", {"A": {1, 4}}, {})
-    assert s2.group_earned == 2
+    assert s2.group_earned == 1
 
 
 def test_group_available_until_final():
@@ -46,7 +46,7 @@ def test_group_available_until_final():
     st = TournamentState.from_matches(ms)
     s = score_member(st, 1, "x", {"A": {1, 2}}, {})
     assert s.group_earned == 0
-    assert s.group_available == 4  # optimistic: 2 picks * 2
+    assert s.group_available == 2  # optimistic: 2 picks * 1 pt
 
 
 def test_knockout_earned_and_available():

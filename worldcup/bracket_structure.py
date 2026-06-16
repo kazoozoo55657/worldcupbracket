@@ -54,6 +54,26 @@ FED_MATCHES = R16_MATCHES + QF_MATCHES + SF_MATCHES + [FINAL_MATCH]
 THIRD_PLACE_SLOTS = {m["no"]: m["away"][1] for m in R32_MATCHES if m["away"][0] == "3"}
 
 
+# Two-sided layout for the visual bracket. The left half flows left->right toward the
+# centre Final; the right half flows right->left. Each entry is (round, [match numbers
+# top-to-bottom]) ordered so a parent sits centred between its two children.
+LEFT_COLUMNS = [
+    ("R32", [74, 77, 73, 75, 83, 84, 81, 82]),
+    ("R16", [89, 90, 93, 94]),
+    ("QF", [97, 98]),
+    ("SF", [101]),
+]
+RIGHT_COLUMNS = [  # nearest-centre column first; the R32 column renders on the far right
+    ("SF", [102]),
+    ("QF", [99, 100]),
+    ("R16", [91, 92, 95, 96]),
+    ("R32", [76, 78, 79, 80, 86, 88, 85, 87]),
+]
+
+NO_TO_R32 = {m["no"]: m for m in R32_MATCHES}
+NO_TO_FED = {m["no"]: m for m in FED_MATCHES}
+
+
 def round_of(no: int) -> str:
     if 73 <= no <= 88:
         return "R32"

@@ -95,6 +95,47 @@ def test_flags():
     assert flags.code_of("England") == "gb-eng"
 
 
+def test_r32_decoupled_from_group_picks():
+    """R32 participants come from real results, not anyone's group predictions."""
+    import tempfile
+    from worldcup.config import config as cfg
+    from worldcup import db as dbm, repo, seed_data
+
+    saved = cfg.DB_PATH
+    cfg.DB_PATH = tempfile.mktemp(suffix=".db")
+    try:
+        dbm.init_db()
+        conn = dbm.connect()
+        seed_data.build_synthetic(conn)
+        a = {r["name"]: r["id"] for r in conn.execute("SELECT id,name FROM team WHERE grp='A'")}
+        b = {r["name"]: r["id"] for r in conn.execute("SELECT id,name FROM team WHERE grp='B'")}
+        # Finish Group A: A1>A2>A3>A4 (lower id wins 1-0).
+        for m in conn.execute("SELECT id,home_team_id,away_team_id FROM match WHERE grp_code='A'").fetchall():
+            w = min(m["home_team_id"], m["away_team_id"])
+            hs, as_ = (1, 0) if m["home_team_id"] < m["away_team_id"] else (0, 1)
+            conn.execute("UPDATE match SET status='FINISHED', home_score=?, away_score=?, "
+                         "winner_team_id=? WHERE id=?", (hs, as_, w, m["id"]))
+        # real R32 matchup populated: actual 1A (A1) vs B3 -> third slot 79 filler
+        r32 = conn.execute("SELECT id FROM match WHERE round='R32' ORDER BY id LIMIT 1").fetchone()["id"]
+        conn.execute("UPDATE match SET home_team_id=?, away_team_id=? WHERE id=?", (a["A1"], b["B3"], r32))
+        conn.commit()
+
+        agw, agr, aslot = repo.actual_r32_fillers(conn)
+        assert agw["A"] == a["A1"] and agr["A"] == a["A2"]
+        assert aslot.get(79) == b["B3"]
+
+        # A member with NO group picks at all still sees the real R32 field.
+        conn.execute("INSERT INTO member (bracket_name, pin_hash, is_admin, created_at, joined_at) "
+                     "VALUES ('nopicks', 'x', 0, 't', 't')")
+        mid = conn.execute("SELECT id FROM member WHERE bracket_name='nopicks'").fetchone()["id"]
+        parts, _ = repo.resolve_member(conn, mid)
+        assert parts[73] == (a["A2"], None)   # match 73 = 2A vs 2B; 2A known, 2B (group B unfinished) TBD
+        assert parts[79][0] == a["A1"] and parts[79][1] == b["B3"]  # 1A vs the real 3rd
+        conn.close()
+    finally:
+        cfg.DB_PATH = saved
+
+
 def test_group_locks_only_when_complete():
     """A group locks once all its matches are FINISHED; knockout never locks here."""
     from worldcup.locks import compute_locks

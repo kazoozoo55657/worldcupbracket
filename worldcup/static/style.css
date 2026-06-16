@@ -144,24 +144,44 @@ h2.sec { margin: 28px 0 12px; border-bottom: 1px solid var(--line); padding-bott
 .sel { display: flex; flex-direction: column; gap: 4px; font-size: .8rem; color: var(--muted); margin-bottom: 8px; }
 .sel select { width: 100%; }
 
-.bracket-scroll { overflow-x: auto; padding-bottom: 10px; }
-.bracket-cols { display: flex; gap: 18px; min-width: max-content; align-items: stretch; }
-.bcol { display: flex; flex-direction: column; justify-content: space-around; gap: 12px; min-width: 190px; }
-.bcol-head { text-align: center; font-weight: 800; color: var(--accent); text-transform: uppercase;
-             letter-spacing: .5px; font-size: .78rem; margin-bottom: 4px; }
-.bmatch { background: #0e1426; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
-.bmatch.locked { opacity: .7; }
-.bteam { display: flex; align-items: center; gap: 6px; padding: 6px 8px; min-height: 38px; }
-.bteam + .bteam { border-top: 1px solid var(--line); }
-.bteam.win { background: rgba(54,211,153,.16); }
-.bteam.win .tn { font-weight: 800; }
-.bteamlabel { display: flex; align-items: center; gap: 8px; cursor: pointer; width: 100%; }
-.bteamlabel input, .adv input { accent-color: var(--accent); }
-.tn { font-size: .9rem; display: flex; align-items: center; gap: 6px; flex: 1; }
-.tn .star { margin-left: auto; }
-.tbd { color: var(--muted); font-size: .82rem; font-style: italic; }
-.thirdsel { flex: 1; padding: 5px 6px; font-size: .82rem; max-width: 150px; }
-.adv { margin-left: auto; color: var(--accent); font-weight: 800; cursor: pointer; display: flex; align-items: center; gap: 3px; }
+/* two-sided knockout bracket */
+.bracket-scroll { overflow-x: auto; padding: 6px 0 14px; }
+.ko { --kgap: 20px; display: flex; align-items: stretch; gap: var(--kgap); min-width: max-content; }
+.ko-side { display: flex; gap: var(--kgap); }
+.kcol { display: flex; flex-direction: column; min-width: 152px; }
+.kcol-head { text-align: center; font-weight: 800; color: var(--accent); text-transform: uppercase;
+             letter-spacing: .5px; font-size: .72rem; height: 14px; margin-bottom: 8px; }
+.kcol-body { flex: 1; display: flex; flex-direction: column; }
+.kmatch { flex: 1 0 0; display: flex; flex-direction: column; justify-content: center; position: relative; }
+.kteam { display: flex; align-items: center; background: #0e1426; border: 1px solid var(--line);
+         padding: 4px 7px; min-height: 30px; }
+.kmatch > .kteam:first-child { border-radius: 8px 8px 0 0; }
+.kmatch > .kteam:last-child { border-radius: 0 0 8px 8px; border-top: 0; }
+.kteam.win { background: rgba(54,211,153,.18); border-color: var(--accent); }
+.kpick { display: flex; align-items: center; gap: 6px; cursor: pointer; width: 100%; }
+.kpick input { accent-color: var(--accent); flex-shrink: 0; }
+.ktn { font-size: .85rem; }
+.kteam.win .ktn { font-weight: 800; }
+.kpick .star { margin-left: auto; }
+.ktbd { color: var(--muted); font-size: .75rem; font-style: italic; padding-left: 2px; }
+
+.ko-center { display: flex; flex-direction: column; min-width: 168px; }
+.ko-center .kcol-body { justify-content: center; }
+.ko-center .kmatch { flex: 0 0 auto; }
+
+/* connector elbows: horizontal stub from every match toward the centre, plus a
+   vertical line joining each pair at the parent column's edge. */
+.ko-side .kmatch::after { content: ''; position: absolute; top: 50%; width: var(--kgap);
+                          height: 2px; background: var(--line); }
+.ko-side.left .kmatch::after { left: 100%; }
+.ko-side.right .kmatch::after { right: 100%; }
+.ko-side.left .kcol:not(:last-child) .kmatch:nth-child(odd)::before,
+.ko-side.right .kcol:not(:first-child) .kmatch:nth-child(odd)::before {
+  content: ''; position: absolute; top: 50%; height: 100%; width: 2px; background: var(--line); }
+.ko-side.left .kcol:not(:last-child) .kmatch:nth-child(odd)::before { left: calc(100% + var(--kgap)); }
+.ko-side.right .kcol:not(:first-child) .kmatch:nth-child(odd)::before { right: calc(100% + var(--kgap)); }
+.champ { color: #ffcf4d; font-weight: 800; display: inline-flex; align-items: center; gap: 5px; }
+.champ .flag { width: 24px; height: 18px; }
 
 .savebar { position: sticky; bottom: 0; margin-top: 22px; padding: 14px 0;
            background: linear-gradient(0deg, var(--bg) 70%, transparent); text-align: center; }

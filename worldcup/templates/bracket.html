@@ -4,26 +4,32 @@
 {% macro flag(t) %}{% if t.flag %}<img class="flag" src="{{ t.flag }}" alt="" loading="lazy">{% endif %}{% endmacro %}
 {% macro star(medal) %}{% if medal %}<span class="star {{ medal }}">★</span>{% endif %}{% endmacro %}
 
-{% macro side_cell(m, side) %}
-  <div class="bteam{{ ' win' if side.team and m.winner_id == side.team.id }}">
-    {% if side.third %}
-      <select name="slot_{{ m.no }}" class="thirdsel">
-        <option value="">3rd place…</option>
-        {% for o in side.options %}
-          <option value="{{ o.id }}" {{ 'selected' if side.slot_value == o.id }}>{{ o.emoji }} {{ o.name }}</option>
-        {% endfor %}
-      </select>
-      {% if side.team %}
-        <label class="adv"><input type="radio" name="win_{{ m.no }}" value="{{ side.team.id }}"
-          {{ 'checked' if m.winner_id == side.team.id }} {{ 'disabled' if not m.can_pick }}>→</label>
-      {% endif %}
-    {% elif side.team %}
-      <label class="bteamlabel"><input type="radio" name="win_{{ m.no }}" value="{{ side.team.id }}"
-        {{ 'checked' if m.winner_id == side.team.id }} {{ 'disabled' if not m.can_pick }}>
-        <span class="tn">{{ flag(side.team) }}{{ side.team.name }} {{ star(side.team.medal) }}</span></label>
+{% macro kteam(m, side) %}
+  {% set t = side.team %}
+  <div class="kteam{{ ' win' if t and m.winner_id == t.id }}">
+    {% if t %}
+      <label class="kpick">
+        <input type="radio" name="win_{{ m.no }}" value="{{ t.id }}"
+          {{ 'checked' if m.winner_id == t.id }} {{ 'disabled' if not m.can_pick }}>
+        {{ flag(t) }}<span class="ktn">{{ t.name }}</span>{{ star(t.medal) }}
+      </label>
     {% else %}
-      <span class="tbd">{{ side.label }}</span>
+      <span class="ktbd">{{ side.label }}</span>
     {% endif %}
+  </div>
+{% endmacro %}
+
+{% macro kmatch(m) %}
+  <div class="kmatch{{ ' done' if m.winner_id }}">
+    {{ kteam(m, m.home) }}
+    {{ kteam(m, m.away) }}
+  </div>
+{% endmacro %}
+
+{% macro kcolumn(col) %}
+  <div class="kcol kcol-{{ col.round }}">
+    <div class="kcol-head">{{ col.label }}</div>
+    <div class="kcol-body">{% for m in col.matches %}{{ kmatch(m) }}{% endfor %}</div>
   </div>
 {% endmacro %}
 
@@ -35,32 +41,32 @@
     <span class="pill avail"><b>+{{ my.available }}</b> still available</span>
     <span class="pill muted"><b>{{ my.ceiling }}</b> ceiling</span>
   </div>
-  <p class="sub">Pick each group's winner &amp; runner-up up top — those flow into the bracket
-     below. Then choose the winner of every knockout match through to the champion.
-     <b>Save bracket</b> at the bottom (and re-save after changing group picks so the bracket updates).</p>
+  <p class="sub">Group picks are a separate, lighter track. The knockout is independent —
+     the real Round of 32 fills in from results as groups finish, and you score by picking
+     the winners up to the champion. <b>Save bracket</b> at the bottom.</p>
 </section>
 
 <form method="post" action="/bracket" id="bform">
   <input type="hidden" name="csrf_token" value="{{ csrf }}">
 
-  <h2 class="sec">Group stage <span class="muted small">· <span class="star gold">★</span>#1 <span class="star silver">★</span>#2 <span class="star bronze">★</span>#3 by FIFA rank, as of {{ ranking_date }}</span></h2>
+  <h2 class="sec">Group stage <span class="muted small">· pick the 2 to advance · <span class="star gold">★</span>#1 <span class="star silver">★</span>#2 <span class="star bronze">★</span>#3 by FIFA rank, {{ ranking_date }}</span></h2>
   <div class="groups-grid">
     {% for g in groups %}
       <div class="card group {{ 'locked' if g.locked }}">
         <div class="group-head">
           <h3>{{ g.name }}</h3>
-          {% if g.locked %}<span class="tag tag-lock">Locked</span>{% endif %}
+          {% if g.locked %}<span class="tag tag-lock">Final</span>{% endif %}
         </div>
         <ul class="teamlist">
           {% for t in g.teams %}<li>{{ flag(t) }}{{ t.name }} {{ star(t.medal) }}</li>{% endfor %}
         </ul>
-        <label class="sel">Winner
+        <label class="sel">Advances (1st)
           <select name="gw_{{ g.code }}" {{ 'disabled' if g.locked }}>
             <option value="">—</option>
             {% for t in g.teams %}<option value="{{ t.id }}" {{ 'selected' if g.winner_id == t.id }}>{{ t.emoji }} {{ t.name }}</option>{% endfor %}
           </select>
         </label>
-        <label class="sel">Runner-up
+        <label class="sel">Advances (2nd)
           <select name="gr_{{ g.code }}" {{ 'disabled' if g.locked }}>
             <option value="">—</option>
             {% for t in g.teams %}<option value="{{ t.id }}" {{ 'selected' if g.runner_id == t.id }}>{{ t.emoji }} {{ t.name }}</option>{% endfor %}
@@ -70,20 +76,23 @@
     {% endfor %}
   </div>
 
-  <h2 class="sec">Knockout bracket</h2>
+  <h2 class="sec">Knockout bracket {% if champion %}· <span class="champ">🏆 {{ flag(champion) }}{{ champion.name }}</span>{% endif %}</h2>
+  {% if not ko_open %}
+    <p class="muted">The bracket opens as group results come in — the real Round of 32 teams
+       fill in automatically, then you pick winners from there.</p>
+  {% endif %}
   <div class="bracket-scroll">
-    <div class="bracket-cols">
-      {% for rnd in rounds %}
-        <div class="bcol bcol-{{ rnd.code }}">
-          <div class="bcol-head">{{ rnd.label }}</div>
-          {% for m in rnd.matches %}
-            <div class="bmatch{{ ' locked' if m.locked }}">
-              {{ side_cell(m, m.home) }}
-              {{ side_cell(m, m.away) }}
-            </div>
-          {% endfor %}
-        </div>
-      {% endfor %}
+    <div class="ko">
+      <div class="ko-side left">
+        {% for col in ko_left %}{{ kcolumn(col) }}{% endfor %}
+      </div>
+      <div class="ko-center">
+        <div class="kcol-head">Final</div>
+        <div class="kcol-body">{{ kmatch(ko_final) }}</div>
+      </div>
+      <div class="ko-side right">
+        {% for col in ko_right %}{{ kcolumn(col) }}{% endfor %}
+      </div>
     </div>
   </div>
 

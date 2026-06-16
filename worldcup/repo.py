@@ -96,17 +96,38 @@ class PickError(Exception):
     pass
 
 
-def member_fillers(conn, member_id):
-    """The member's predicted R32 fillers: (group_winner, group_runner, slot)."""
-    ranked = member_group_ranked(conn, member_id)
-    gw = {g: d["winner"] for g, d in ranked.items() if d.get("winner")}
-    gr = {g: d["runner"] for g, d in ranked.items() if d.get("runner")}
-    return gw, gr, member_slot_picks(conn, member_id)
+def actual_r32_fillers(conn):
+    """The REAL R32 field from football-data, independent of anyone's group picks.
+
+    (group_winner, group_runner, slot): actual 1st/2nd of each FINISHED group, and the
+    actual third-place team per slot once the feed has populated the R32 matchups.
+    Slots that aren't decided yet are simply absent (shown as TBD in the bracket).
+    """
+    matches = all_matches(conn)
+    state = TournamentState.from_matches(matches)
+    agw, agr = {}, {}
+    for g, ordered in state.standings.items():
+        if state.group_complete.get(g) and len(ordered) >= 2:
+            agw[g], agr[g] = ordered[0], ordered[1]
+    opp = {}
+    for m in matches:
+        if m["round"] == "R32" and m["home_team_id"] and m["away_team_id"]:
+            opp[m["home_team_id"]] = m["away_team_id"]
+            opp[m["away_team_id"]] = m["home_team_id"]
+    aslot = {}
+    for bm in bracket_structure.R32_MATCHES:
+        if bm["away"][0] != "3":
+            continue
+        kind, g = bm["home"]
+        ht = agw.get(g) if kind == "W" else agr.get(g)
+        if ht and ht in opp:
+            aslot[bm["no"]] = opp[ht]
+    return agw, agr, aslot
 
 
 def resolve_member(conn, member_id: int):
-    """(participants, winners) per knockout match, driven by the member's group picks."""
-    gw, gr, slot = member_fillers(conn, member_id)
+    """(participants, winners): the REAL R32 field + this member's winner predictions."""
+    gw, gr, slot = actual_r32_fillers(conn)
     rounds = member_adv_picks(conn, member_id)
     return bracket_structure.resolve(gw, gr, slot, rounds)
 
