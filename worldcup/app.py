@@ -1,6 +1,7 @@
 """FastAPI application: join/login, group + bracket picks, leaderboard, admin."""
 from __future__ import annotations
 
+import hashlib
 import secrets
 from contextlib import contextmanager
 from pathlib import Path
@@ -21,6 +22,11 @@ BASE_DIR = Path(__file__).parent
 templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 app = FastAPI(title="World Cup 2026 Bracket Pool")
 app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="static")
+
+# Cache-bust static assets: a content hash in the URL means a new build serves a new
+# URL, so Cloudflare/browser caches can't serve a stale stylesheet.
+STATIC_VER = hashlib.md5((BASE_DIR / "static" / "style.css").read_bytes()).hexdigest()[:8]
+templates.env.globals["static_ver"] = STATIC_VER
 
 _csrf_signer = URLSafeSerializer(config.SESSION_SECRET, salt="wc-csrf")
 CSRF_COOKIE = "wc_csrf"
