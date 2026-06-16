@@ -96,14 +96,54 @@ class PickError(Exception):
     pass
 
 
-def resolve_member(conn, member_id: int):
-    """Predicted (participants, winners) per knockout match for this member."""
+def actual_r32_fillers(conn):
+    """Real R32 slot fillers from results (hybrid): actual group winner/runner per
+    FINAL group, and the actual third-place team per slot once the feed has populated
+    the R32 matchups. Returns (group_winner, group_runner, slot) dicts of what's known.
+    """
+    matches = all_matches(conn)
+    state = TournamentState.from_matches(matches)
+    agw, agr = {}, {}
+    for g, ordered in state.standings.items():
+        if state.group_complete.get(g) and len(ordered) >= 2:
+            agw[g], agr[g] = ordered[0], ordered[1]
+    # opponent lookup from populated R32 feed rows (real matchups)
+    opp = {}
+    for m in matches:
+        if m["round"] == "R32" and m["home_team_id"] and m["away_team_id"]:
+            opp[m["home_team_id"]] = m["away_team_id"]
+            opp[m["away_team_id"]] = m["home_team_id"]
+    aslot = {}
+    for bm in bracket_structure.R32_MATCHES:
+        if bm["away"][0] != "3":
+            continue
+        kind, g = bm["home"]
+        home_team = agw.get(g) if kind == "W" else agr.get(g)
+        if home_team and home_team in opp:
+            aslot[bm["no"]] = opp[home_team]
+    return agw, agr, aslot
+
+
+def effective_fillers(conn, member_id):
+    """Member's predicted R32 fillers, with ACTUAL results overriding where known.
+
+    This is the hybrid: before a group finishes the bracket uses the member's
+    predictions; once it finishes (or the real R32 draw is set) the actual qualifiers
+    fill the slots, so latecomers who skipped the group picks can still pick winners.
+    """
     ranked = member_group_ranked(conn, member_id)
-    gw = {g: d["winner"] for g, d in ranked.items() if d.get("winner")}
-    gr = {g: d["runner"] for g, d in ranked.items() if d.get("runner")}
-    slots = member_slot_picks(conn, member_id)
+    pgw = {g: d["winner"] for g, d in ranked.items() if d.get("winner")}
+    pgr = {g: d["runner"] for g, d in ranked.items() if d.get("runner")}
+    pslot = member_slot_picks(conn, member_id)
+    agw, agr, aslot = actual_r32_fillers(conn)
+    return {**pgw, **agw}, {**pgr, **agr}, {**pslot, **aslot}
+
+
+def resolve_member(conn, member_id: int):
+    """(participants, winners) per knockout match, using effective (actual-aware) fillers."""
+    gw, gr, slot = effective_fillers(conn, member_id)
     rounds = member_adv_picks(conn, member_id)
-    return bracket_structure.resolve(gw, gr, slots, rounds)
+    return bracket_structure.resolve(gw, gr, slot, rounds)
 
 
 def set_group_pick(conn, member_id, grp, winner_id, runner_id, locks):

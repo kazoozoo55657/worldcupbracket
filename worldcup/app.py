@@ -236,6 +236,7 @@ def _build_bracket_view(conn, member):
         })
 
     participants, winners = repo.resolve_member(conn, member["id"])
+    _, _, actual_slot = repo.actual_r32_fillers(conn)  # third slots already decided by results
 
     def disp(tid):
         t = teams.get(tid) if tid else None
@@ -260,7 +261,8 @@ def _build_bracket_view(conn, member):
             h, a = participants.get(no, (None, None))
             if rc == "R32":
                 home = {"team": disp(h), "label": _slot_label(m["home"]), "third": False}
-                is_third = m["away"][0] == "3"
+                # a third-place slot stays a dropdown until the real qualifier is known
+                is_third = m["away"][0] == "3" and no not in actual_slot
                 away = {"team": disp(a), "label": _slot_label(m["away"]), "third": is_third,
                         "slot_value": slot_picks.get(no) if is_third else None,
                         "options": third_options(no) if is_third else None}
@@ -309,10 +311,8 @@ async def save_bracket(request: Request, member: dict = Depends(require_member))
             for no in bracket_structure.THIRD_PLACE_SLOTS:
                 repo.set_slot_pick(conn, member["id"], no, _int(form.get(f"slot_{no}")))
         # Match winners -> clean round-winner sets (frozen rounds keep existing picks).
-        ranked = repo.member_group_ranked(conn, member["id"])
-        gw = {g: d["winner"] for g, d in ranked.items() if d.get("winner")}
-        gr = {g: d["runner"] for g, d in ranked.items() if d.get("runner")}
-        slots = repo.member_slot_picks(conn, member["id"])
+        # Effective fillers let winners be picked from ACTUAL qualifiers (hybrid).
+        gw, gr, slots = repo.effective_fillers(conn, member["id"])
         match_choice = {}
         for rc, mlist in bracket_structure.ROUND_MATCHES.items():
             locked = locks["rounds"].get(rc)

@@ -26,7 +26,10 @@ RANKS = {
 }
 
 _MEDALS = ["gold", "silver", "bronze"]
-_MEDAL_ICON = {"gold": "🥇", "silver": "🥈", "bronze": "🥉"}
+# Star COUNT conveys the FIFA strength tier (3=strongest in group, 2=2nd, 1=3rd).
+# Stars (not medals) so the icon doesn't read as a "win". Count works in <option>
+# text too, where CSS colouring isn't reliable.
+_MEDAL_ICON = {"gold": "★★★", "silver": "★★", "bronze": "★"}
 
 
 def _norm(name: str) -> str:

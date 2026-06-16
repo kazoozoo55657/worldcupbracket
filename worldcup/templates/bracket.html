@@ -17,7 +17,7 @@
     {% elif side.team %}
       <label class="bteamlabel"><input type="radio" name="win_{{ m.no }}" value="{{ side.team.id }}"
         {{ 'checked' if m.winner_id == side.team.id }} {{ 'disabled' if not m.can_pick }}>
-        <span class="tn">{{ side.team.icon }} {{ side.team.name }}</span></label>
+        <span class="tn"><span class="stars">{{ side.team.icon }}</span> {{ side.team.name }}</span></label>
     {% else %}
       <span class="tbd">{{ side.label }}</span>
     {% endif %}
@@ -40,7 +40,7 @@
 <form method="post" action="/bracket" id="bform">
   <input type="hidden" name="csrf_token" value="{{ csrf }}">
 
-  <h2 class="sec">Group stage <span class="muted small">· 🥇🥈🥉 by FIFA rank, {{ ranking_date }}</span></h2>
+  <h2 class="sec">Group stage <span class="muted small">· <span class="stars">★★★</span>/<span class="stars">★★</span>/<span class="stars">★</span> = FIFA rank #1/#2/#3 in group, as of {{ ranking_date }}</span></h2>
   <div class="groups-grid">
     {% for g in groups %}
       <div class="card group {{ 'locked' if g.locked }}">
@@ -49,7 +49,7 @@
           {% if g.locked %}<span class="tag tag-lock">Locked</span>{% endif %}
         </div>
         <ul class="teamlist">
-          {% for t in g.teams %}<li>{{ t.icon }} {{ t.name }}</li>{% endfor %}
+          {% for t in g.teams %}<li><span class="stars">{{ t.icon }}</span> {{ t.name }}</li>{% endfor %}
         </ul>
         <label class="sel">Winner
           <select name="gw_{{ g.code }}" {{ 'disabled' if g.locked }}>

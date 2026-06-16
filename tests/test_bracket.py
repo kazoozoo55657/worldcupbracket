@@ -81,3 +81,51 @@ def test_group_medals_congo_over_uzbekistan():
              {"id": 3, "name": "Congo DR"}, {"id": 4, "name": "Uzbekistan"}]
     medals = rankings.group_medals(teams)
     assert medals[3] == "bronze" and medals[4] is None
+
+
+def test_star_icons_are_stars_not_medals():
+    assert rankings.medal_icon("gold") == "★★★"
+    assert rankings.medal_icon("bronze") == "★"
+    assert "🥇" not in rankings.medal_icon("gold")
+
+
+def test_hybrid_actual_fillers_override_predictions():
+    """Once a group is final, its real qualifiers fill the bracket even with no pick."""
+    import tempfile
+    from worldcup.config import config as cfg
+    from worldcup import db as dbm, repo, seed_data
+
+    saved = cfg.DB_PATH
+    cfg.DB_PATH = tempfile.mktemp(suffix=".db")
+    try:
+        dbm.init_db()
+        conn = dbm.connect()
+        seed_data.build_synthetic(conn)
+        a = {r["name"]: r["id"] for r in conn.execute("SELECT id,name FROM team WHERE grp='A'")}
+        b = {r["name"]: r["id"] for r in conn.execute("SELECT id,name FROM team WHERE grp='B'")}
+        # Finish Group A so standings are A1 > A2 > A3 > A4 (lower id always wins 1-0).
+        for m in conn.execute("SELECT id,home_team_id,away_team_id FROM match WHERE grp_code='A'").fetchall():
+            hi, ai = m["home_team_id"], m["away_team_id"]
+            w = min(hi, ai)
+            hs, as_ = (1, 0) if hi < ai else (0, 1)
+            conn.execute("UPDATE match SET status='FINISHED', home_score=?, away_score=?, "
+                         "winner_team_id=? WHERE id=?", (hs, as_, w, m["id"]))
+        # Populate a real R32 matchup: actual 1A (A1) vs B3 -> third-place slot 79 filler.
+        r32id = conn.execute("SELECT id FROM match WHERE round='R32' ORDER BY id LIMIT 1").fetchone()["id"]
+        conn.execute("UPDATE match SET home_team_id=?, away_team_id=? WHERE id=?",
+                     (a["A1"], b["B3"], r32id))
+        conn.commit()
+
+        agw, agr, aslot = repo.actual_r32_fillers(conn)
+        assert agw["A"] == a["A1"] and agr["A"] == a["A2"]
+        assert aslot.get(79) == b["B3"]   # match 79 home is Winner Group A
+
+        # A member who never picked Group A still gets the actual qualifiers in the bracket.
+        conn.execute("INSERT INTO member (bracket_name, pin_hash, is_admin, created_at, joined_at) "
+                     "VALUES ('late', 'x', 0, 't', 't')")
+        mid = conn.execute("SELECT id FROM member WHERE bracket_name='late'").fetchone()["id"]
+        gw, gr, slot = repo.effective_fillers(conn, mid)
+        assert gw["A"] == a["A1"] and gr["A"] == a["A2"] and slot.get(79) == b["B3"]
+        conn.close()
+    finally:
+        cfg.DB_PATH = saved
