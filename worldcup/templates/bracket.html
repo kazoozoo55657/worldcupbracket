@@ -1,13 +1,16 @@
 {% extends "base.html" %}
 {% block title %}My bracket{% endblock %}
 
+{% macro flag(t) %}{% if t.flag %}<img class="flag" src="{{ t.flag }}" alt="" loading="lazy">{% endif %}{% endmacro %}
+{% macro star(medal) %}{% if medal %}<span class="star {{ medal }}">★</span>{% endif %}{% endmacro %}
+
 {% macro side_cell(m, side) %}
   <div class="bteam{{ ' win' if side.team and m.winner_id == side.team.id }}">
     {% if side.third %}
-      <select name="slot_{{ m.no }}" class="thirdsel" {{ 'disabled' if m.locked }}>
+      <select name="slot_{{ m.no }}" class="thirdsel">
         <option value="">3rd place…</option>
         {% for o in side.options %}
-          <option value="{{ o.id }}" {{ 'selected' if side.slot_value == o.id }}>{{ o.name }}</option>
+          <option value="{{ o.id }}" {{ 'selected' if side.slot_value == o.id }}>{{ o.emoji }} {{ o.name }}</option>
         {% endfor %}
       </select>
       {% if side.team %}
@@ -17,7 +20,7 @@
     {% elif side.team %}
       <label class="bteamlabel"><input type="radio" name="win_{{ m.no }}" value="{{ side.team.id }}"
         {{ 'checked' if m.winner_id == side.team.id }} {{ 'disabled' if not m.can_pick }}>
-        <span class="tn"><span class="stars">{{ side.team.icon }}</span> {{ side.team.name }}</span></label>
+        <span class="tn">{{ flag(side.team) }}{{ side.team.name }} {{ star(side.team.medal) }}</span></label>
     {% else %}
       <span class="tbd">{{ side.label }}</span>
     {% endif %}
@@ -40,7 +43,7 @@
 <form method="post" action="/bracket" id="bform">
   <input type="hidden" name="csrf_token" value="{{ csrf }}">
 
-  <h2 class="sec">Group stage <span class="muted small">· <span class="stars">★★★</span>/<span class="stars">★★</span>/<span class="stars">★</span> = FIFA rank #1/#2/#3 in group, as of {{ ranking_date }}</span></h2>
+  <h2 class="sec">Group stage <span class="muted small">· <span class="star gold">★</span>#1 <span class="star silver">★</span>#2 <span class="star bronze">★</span>#3 by FIFA rank, as of {{ ranking_date }}</span></h2>
   <div class="groups-grid">
     {% for g in groups %}
       <div class="card group {{ 'locked' if g.locked }}">
@@ -49,18 +52,18 @@
           {% if g.locked %}<span class="tag tag-lock">Locked</span>{% endif %}
         </div>
         <ul class="teamlist">
-          {% for t in g.teams %}<li><span class="stars">{{ t.icon }}</span> {{ t.name }}</li>{% endfor %}
+          {% for t in g.teams %}<li>{{ flag(t) }}{{ t.name }} {{ star(t.medal) }}</li>{% endfor %}
         </ul>
         <label class="sel">Winner
           <select name="gw_{{ g.code }}" {{ 'disabled' if g.locked }}>
             <option value="">—</option>
-            {% for t in g.teams %}<option value="{{ t.id }}" {{ 'selected' if g.winner_id == t.id }}>{{ t.icon }} {{ t.name }}</option>{% endfor %}
+            {% for t in g.teams %}<option value="{{ t.id }}" {{ 'selected' if g.winner_id == t.id }}>{{ t.emoji }} {{ t.name }}</option>{% endfor %}
           </select>
         </label>
         <label class="sel">Runner-up
           <select name="gr_{{ g.code }}" {{ 'disabled' if g.locked }}>
             <option value="">—</option>
-            {% for t in g.teams %}<option value="{{ t.id }}" {{ 'selected' if g.runner_id == t.id }}>{{ t.icon }} {{ t.name }}</option>{% endfor %}
+            {% for t in g.teams %}<option value="{{ t.id }}" {{ 'selected' if g.runner_id == t.id }}>{{ t.emoji }} {{ t.name }}</option>{% endfor %}
           </select>
         </label>
       </div>

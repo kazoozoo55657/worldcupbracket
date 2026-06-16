@@ -25,11 +25,9 @@ RANKS = {
     "new zealand": 85,
 }
 
+# Strength tiers within a group: a single ★ coloured gold/silver/bronze for the
+# FIFA #1/#2/#3 team. The template renders the coloured star; rankings just assigns tiers.
 _MEDALS = ["gold", "silver", "bronze"]
-# Star COUNT conveys the FIFA strength tier (3=strongest in group, 2=2nd, 1=3rd).
-# Stars (not medals) so the icon doesn't read as a "win". Count works in <option>
-# text too, where CSS colouring isn't reliable.
-_MEDAL_ICON = {"gold": "★★★", "silver": "★★", "bronze": "★"}
 
 
 def _norm(name: str) -> str:
@@ -40,10 +38,6 @@ def _norm(name: str) -> str:
 
 def rank_of(name: str) -> int:
     return RANKS.get(_norm(name), 999)
-
-
-def medal_icon(medal: str | None) -> str:
-    return _MEDAL_ICON.get(medal, "")
 
 
 def group_medals(teams: list[dict]) -> dict[int, str | None]:

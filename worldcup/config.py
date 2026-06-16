@@ -18,6 +18,11 @@ LAYER_BY_ROUND = {layer["round"]: layer for layer in KNOCKOUT_LAYERS}
 GROUP_POINTS_PER_QUALIFIER = 2
 GROUP_QUALIFIERS_PER_GROUP = 2  # top 2 advance
 
+# Family pool: locking is disabled so latecomers can fill out everything with no
+# penalty (teams that have played still have group games left). Flip to True to
+# re-enable per-match kickoff locking.
+ENFORCE_LOCKS = False
+
 
 def _env(key: str, default: str | None = None) -> str | None:
     return os.environ.get(key, default)

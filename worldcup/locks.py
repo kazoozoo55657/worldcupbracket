@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from .config import KNOCKOUT_ROUNDS, parse_iso, now_utc
+from .config import KNOCKOUT_ROUNDS, ENFORCE_LOCKS, parse_iso, now_utc
 
 
 def _earliest_kickoff(matches: list[dict], predicate) -> datetime | None:
@@ -27,13 +27,13 @@ def compute_locks(matches, now: datetime | None = None) -> dict:
     for g in groups:
         t = _earliest_kickoff(matches, lambda m, g=g: m["round"] == "GROUP" and m["grp_code"] == g)
         group_times[g] = t
-        group_locked[g] = t is not None and now >= t
+        group_locked[g] = ENFORCE_LOCKS and t is not None and now >= t
 
     round_locked, round_times = {}, {}
     for r in KNOCKOUT_ROUNDS:
         t = _earliest_kickoff(matches, lambda m, r=r: m["round"] == r)
         round_times[r] = t
-        round_locked[r] = t is not None and now >= t
+        round_locked[r] = ENFORCE_LOCKS and t is not None and now >= t
 
     return {
         "groups": group_locked,

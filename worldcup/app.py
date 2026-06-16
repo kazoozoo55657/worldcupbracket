@@ -11,7 +11,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from itsdangerous import URLSafeSerializer, BadSignature
 
-from . import auth, repo, rankings, bracket_structure
+from . import auth, repo, rankings, bracket_structure, flags
 from .config import config, KNOCKOUT_LAYERS, LAYER_BY_ROUND, KNOCKOUT_ROUNDS, parse_iso, now_utc
 from .db import connect, init_db, get_pool
 from .locks import compute_locks
@@ -221,7 +221,11 @@ def _build_bracket_view(conn, member):
                       repo.member_group_picks(conn, member["id"]),
                       repo.member_adv_picks(conn, member["id"]), member["joined_at"])
 
-    # Groups section: teams sorted by FIFA rank so medals read 🥇🥈🥉 top-down.
+    def tview(t, medal=None):
+        return {"id": t["id"], "name": t["name"], "medal": medal,
+                "flag": flags.flag_img(t["name"]), "emoji": flags.flag_emoji(t["name"])}
+
+    # Groups section: teams sorted by FIFA rank so the gold ★ reads top-down.
     groups_ctx = []
     for g in repo.all_groups(conn):
         gteams = sorted(repo.teams_in_group(conn, g["code"]),
@@ -231,16 +235,14 @@ def _build_bracket_view(conn, member):
             "code": g["code"], "name": g["name"],
             "locked": locks["groups"].get(g["code"], False),
             "winner_id": r.get("winner"), "runner_id": r.get("runner"),
-            "teams": [{"id": t["id"], "name": t["name"],
-                       "icon": rankings.medal_icon(medals.get(t["id"]))} for t in gteams],
+            "teams": [tview(t, medals.get(t["id"])) for t in gteams],
         })
 
     participants, winners = repo.resolve_member(conn, member["id"])
-    _, _, actual_slot = repo.actual_r32_fillers(conn)  # third slots already decided by results
 
     def disp(tid):
         t = teams.get(tid) if tid else None
-        return {"id": tid, "name": t["name"], "icon": rankings.medal_icon(medals.get(tid))} if t else None
+        return tview(t, medals.get(tid)) if t else None
 
     def third_options(no):
         opts = []
@@ -249,7 +251,8 @@ def _build_bracket_view(conn, member):
             taken = {r.get("winner"), r.get("runner")}
             for t in repo.teams_in_group(conn, gc):
                 if t["id"] not in taken:
-                    opts.append({"id": t["id"], "name": f'{t["name"]} ({gc})'})
+                    opts.append({"id": t["id"], "name": f'{t["name"]} ({gc})',
+                                 "emoji": flags.flag_emoji(t["name"])})
         return opts
 
     rounds_ctx = []
@@ -261,8 +264,7 @@ def _build_bracket_view(conn, member):
             h, a = participants.get(no, (None, None))
             if rc == "R32":
                 home = {"team": disp(h), "label": _slot_label(m["home"]), "third": False}
-                # a third-place slot stays a dropdown until the real qualifier is known
-                is_third = m["away"][0] == "3" and no not in actual_slot
+                is_third = m["away"][0] == "3"
                 away = {"team": disp(a), "label": _slot_label(m["away"]), "third": is_third,
                         "slot_value": slot_picks.get(no) if is_third else None,
                         "options": third_options(no) if is_third else None}
@@ -311,8 +313,7 @@ async def save_bracket(request: Request, member: dict = Depends(require_member))
             for no in bracket_structure.THIRD_PLACE_SLOTS:
                 repo.set_slot_pick(conn, member["id"], no, _int(form.get(f"slot_{no}")))
         # Match winners -> clean round-winner sets (frozen rounds keep existing picks).
-        # Effective fillers let winners be picked from ACTUAL qualifiers (hybrid).
-        gw, gr, slots = repo.effective_fillers(conn, member["id"])
+        gw, gr, slots = repo.member_fillers(conn, member["id"])
         match_choice = {}
         for rc, mlist in bracket_structure.ROUND_MATCHES.items():
             locked = locks["rounds"].get(rc)

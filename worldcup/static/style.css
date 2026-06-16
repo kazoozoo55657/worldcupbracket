@@ -129,8 +129,15 @@ button.primary:hover, button.save:hover { filter: brightness(1.06); }
 
 /* merged bracket page */
 h2.sec { margin: 28px 0 12px; border-bottom: 1px solid var(--line); padding-bottom: 8px; }
-.teamlist { list-style: none; margin: 0 0 12px; padding: 0; display: flex; flex-direction: column; gap: 3px; font-size: .92rem; }
-.stars { color: #ffcf4d; letter-spacing: -2px; font-size: .85em; }
+.teamlist { list-style: none; margin: 0 0 12px; padding: 0; display: flex; flex-direction: column; gap: 4px; font-size: .92rem; }
+.teamlist li { display: flex; align-items: center; gap: 6px; }
+.flag { width: 20px; height: 15px; border-radius: 2px; object-fit: cover; vertical-align: middle;
+        box-shadow: 0 0 0 1px rgba(255,255,255,.12); flex-shrink: 0; }
+.star { font-size: .9em; }
+.star.gold { color: #ffcf4d; }
+.star.silver { color: #cfd8e6; }
+.star.bronze { color: #d08b54; }
+.teamlist li .star { margin-left: auto; }
 .sel { display: flex; flex-direction: column; gap: 4px; font-size: .8rem; color: var(--muted); margin-bottom: 8px; }
 .sel select { width: 100%; }
 
@@ -147,7 +154,8 @@ h2.sec { margin: 28px 0 12px; border-bottom: 1px solid var(--line); padding-bott
 .bteam.win .tn { font-weight: 800; }
 .bteamlabel { display: flex; align-items: center; gap: 8px; cursor: pointer; width: 100%; }
 .bteamlabel input, .adv input { accent-color: var(--accent); }
-.tn { font-size: .9rem; }
+.tn { font-size: .9rem; display: flex; align-items: center; gap: 6px; flex: 1; }
+.tn .star { margin-left: auto; }
 .tbd { color: var(--muted); font-size: .82rem; font-style: italic; }
 .thirdsel { flex: 1; padding: 5px 6px; font-size: .82rem; max-width: 150px; }
 .adv { margin-left: auto; color: var(--accent); font-weight: 800; cursor: pointer; display: flex; align-items: center; gap: 3px; }
