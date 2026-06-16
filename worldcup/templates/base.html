@@ -13,7 +13,6 @@
   <nav>
     <a href="/">Home</a>
     {% if session %}
-      <a href="/groups">Groups</a>
       <a href="/bracket">My Bracket</a>
       {% if session.a %}<a href="/admin">Admin</a>{% endif %}
       <form class="inline" method="post" action="/logout">

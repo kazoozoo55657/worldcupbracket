@@ -61,11 +61,22 @@ CREATE TABLE IF NOT EXISTS match (
 );
 
 -- Group-stage prediction: the 2 teams a member thinks advance from a group.
+-- rank: 1 = predicted winner (feeds the bracket's 1X slots), 2 = runner-up (2X slots).
 CREATE TABLE IF NOT EXISTS group_pick (
     member_id INTEGER NOT NULL REFERENCES member(id) ON DELETE CASCADE,
     grp_code  TEXT NOT NULL REFERENCES grp(code),
     team_id   INTEGER NOT NULL REFERENCES team(id),
+    rank      INTEGER,                       -- 1=winner, 2=runner-up
     PRIMARY KEY (member_id, grp_code, team_id)
+);
+
+-- Predicted team for a third-place R32 slot (the 8 "best 3rd place" matches).
+-- match_no is the FIFA match number (e.g. 74); see bracket_structure.THIRD_PLACE_SLOTS.
+CREATE TABLE IF NOT EXISTS slot_pick (
+    member_id INTEGER NOT NULL REFERENCES member(id) ON DELETE CASCADE,
+    match_no  INTEGER NOT NULL,
+    team_id   INTEGER NOT NULL REFERENCES team(id),
+    PRIMARY KEY (member_id, match_no)
 );
 
 -- Knockout advancement prediction. round ∈ {R32,R16,QF,SF,F}:

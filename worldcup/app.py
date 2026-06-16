@@ -11,7 +11,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from itsdangerous import URLSafeSerializer, BadSignature
 
-from . import auth, repo
+from . import auth, repo, rankings, bracket_structure
 from .config import config, KNOCKOUT_LAYERS, LAYER_BY_ROUND, KNOCKOUT_ROUNDS, parse_iso, now_utc
 from .db import connect, init_db, get_pool
 from .locks import compute_locks
@@ -185,80 +185,142 @@ def logout(request: Request, csrf_token: str = Form("")):
 
 # ---------------- member picks ----------------
 
-@app.get("/groups", response_class=HTMLResponse)
-def groups_page(request: Request, member: dict = Depends(require_member)):
-    with db() as conn:
-        groups = repo.all_groups(conn)
-        picks = repo.member_group_picks(conn, member["id"])
-        locks = compute_locks(repo.all_matches(conn))
-        teams = {g["code"]: repo.teams_in_group(conn, g["code"]) for g in groups}
-    return templates.TemplateResponse(
-        "groups.html",
-        ctx(request, member=member, groups=groups, teams=teams, picks=picks, locks=locks),
-    )
+def _int(v):
+    try:
+        n = int(v)
+        return n if n > 0 else None
+    except (TypeError, ValueError):
+        return None
 
 
-@app.post("/groups/{grp}")
-def save_group(
-    request: Request,
-    grp: str,
-    team: list[int] = Form(default=[]),
-    csrf_token: str = Form(""),
-    member: dict = Depends(require_member),
-):
-    check_csrf(request, csrf_token)
-    with db() as conn:
-        locks = compute_locks(repo.all_matches(conn))
-        try:
-            repo.save_group_pick(conn, member["id"], grp, team, locks)
-        except repo.PickError as e:
-            raise HTTPException(status_code=400, detail=str(e))
-    return RedirectResponse("/groups", status_code=303)
+def _slot_label(spec):
+    kind, val = spec
+    if kind == "W":
+        return f"Winner Group {val}"
+    if kind == "R":
+        return f"Runner-up Group {val}"
+    return "3rd place: " + "/".join(val)
+
+
+def _medal_map(conn):
+    m = {}
+    for g in repo.all_groups(conn):
+        m.update(rankings.group_medals(repo.teams_in_group(conn, g["code"])))
+    return m
+
+
+def _build_bracket_view(conn, member):
+    matches_rows = repo.all_matches(conn)
+    locks = compute_locks(matches_rows)
+    teams = repo.teams_by_id(conn)
+    medals = _medal_map(conn)
+    ranked = repo.member_group_ranked(conn, member["id"])
+    slot_picks = repo.member_slot_picks(conn, member["id"])
+    state = TournamentState.from_matches(matches_rows)
+    my = score_member(state, member["id"], member["bracket_name"],
+                      repo.member_group_picks(conn, member["id"]),
+                      repo.member_adv_picks(conn, member["id"]), member["joined_at"])
+
+    # Groups section: teams sorted by FIFA rank so medals read 🥇🥈🥉 top-down.
+    groups_ctx = []
+    for g in repo.all_groups(conn):
+        gteams = sorted(repo.teams_in_group(conn, g["code"]),
+                        key=lambda t: rankings.rank_of(t["name"]))
+        r = ranked.get(g["code"], {})
+        groups_ctx.append({
+            "code": g["code"], "name": g["name"],
+            "locked": locks["groups"].get(g["code"], False),
+            "winner_id": r.get("winner"), "runner_id": r.get("runner"),
+            "teams": [{"id": t["id"], "name": t["name"],
+                       "icon": rankings.medal_icon(medals.get(t["id"]))} for t in gteams],
+        })
+
+    participants, winners = repo.resolve_member(conn, member["id"])
+
+    def disp(tid):
+        t = teams.get(tid) if tid else None
+        return {"id": tid, "name": t["name"], "icon": rankings.medal_icon(medals.get(tid))} if t else None
+
+    def third_options(no):
+        opts = []
+        for gc in bracket_structure.THIRD_PLACE_SLOTS[no]:
+            r = ranked.get(gc, {})
+            taken = {r.get("winner"), r.get("runner")}
+            for t in repo.teams_in_group(conn, gc):
+                if t["id"] not in taken:
+                    opts.append({"id": t["id"], "name": f'{t["name"]} ({gc})'})
+        return opts
+
+    rounds_ctx = []
+    for layer in KNOCKOUT_LAYERS:
+        rc, rlocked = layer["round"], locks["rounds"].get(layer["round"], False)
+        ms = []
+        for m in bracket_structure.ROUND_MATCHES[rc]:
+            no = m["no"]
+            h, a = participants.get(no, (None, None))
+            if rc == "R32":
+                home = {"team": disp(h), "label": _slot_label(m["home"]), "third": False}
+                is_third = m["away"][0] == "3"
+                away = {"team": disp(a), "label": _slot_label(m["away"]), "third": is_third,
+                        "slot_value": slot_picks.get(no) if is_third else None,
+                        "options": third_options(no) if is_third else None}
+            else:
+                home = {"team": disp(h), "label": f"Winner Match {m['feeds'][0]}", "third": False}
+                away = {"team": disp(a), "label": f"Winner Match {m['feeds'][1]}", "third": False}
+            ms.append({"no": no, "home": home, "away": away, "winner_id": winners.get(no),
+                       "can_pick": bool(h and a) and not rlocked, "locked": rlocked})
+        rounds_ctx.append({"code": rc, "label": layer["label"], "matches": ms})
+
+    return dict(groups=groups_ctx, rounds=rounds_ctx, my=my,
+                ranking_date=rankings.RANKING_DATE)
+
+
+@app.get("/groups")
+def groups_redirect():
+    return RedirectResponse("/bracket", status_code=307)
 
 
 @app.get("/bracket", response_class=HTMLResponse)
 def bracket_page(request: Request, member: dict = Depends(require_member)):
     with db() as conn:
-        matches = repo.all_matches(conn)
-        teams = repo.teams_by_id(conn)
-        all_teams = repo.all_teams(conn)
-        adv = repo.member_adv_picks(conn, member["id"])
-        locks = compute_locks(matches)
-        state = TournamentState.from_matches(matches)
-        gp = repo.member_group_picks(conn, member["id"])
-        my = score_member(state, member["id"], member["bracket_name"], gp, adv, member["joined_at"])
-    # Candidate pool per layer: R32 from all teams; deeper from previous round's picks.
-    pools = {}
-    prev = None
-    for layer in KNOCKOUT_LAYERS:
-        r = layer["round"]
-        if prev is None:
-            pools[r] = all_teams
-        else:
-            pools[r] = [teams[t] for t in sorted(adv.get(prev, set())) if t in teams]
-        prev = r
-    return templates.TemplateResponse(
-        "bracket.html",
-        ctx(request, member=member, layers=KNOCKOUT_LAYERS, pools=pools, adv=adv,
-            locks=locks, teams=teams, state=state, my=my),
-    )
+        view = _build_bracket_view(conn, member)
+    return templates.TemplateResponse("bracket.html", ctx(request, member=member, **view))
 
 
-@app.post("/bracket/{rnd}")
-def save_bracket(
-    request: Request,
-    rnd: str,
-    team: list[int] = Form(default=[]),
-    csrf_token: str = Form(""),
-    member: dict = Depends(require_member),
-):
-    check_csrf(request, csrf_token)
+@app.post("/bracket")
+async def save_bracket(request: Request, member: dict = Depends(require_member)):
+    form = await request.form()
+    check_csrf(request, form.get("csrf_token", ""))
     with db() as conn:
         locks = compute_locks(repo.all_matches(conn))
-        try:
-            repo.save_adv_pick(conn, member["id"], rnd, team, locks)
-        except repo.PickError as e:
-            raise HTTPException(status_code=400, detail=str(e))
+        _, existing_winners = repo.resolve_member(conn, member["id"])
+        # Group winner/runner picks (skip locked groups).
+        for g in repo.all_groups(conn):
+            gc = g["code"]
+            if locks["groups"].get(gc):
+                continue
+            try:
+                repo.set_group_pick(conn, member["id"], gc,
+                                    _int(form.get(f"gw_{gc}")), _int(form.get(f"gr_{gc}")), locks)
+            except repo.PickError:
+                pass  # ignore inconsistent group input; user can re-pick
+        # Third-place slot picks.
+        if not locks["rounds"].get("R32"):
+            for no in bracket_structure.THIRD_PLACE_SLOTS:
+                repo.set_slot_pick(conn, member["id"], no, _int(form.get(f"slot_{no}")))
+        # Match winners -> clean round-winner sets (frozen rounds keep existing picks).
+        ranked = repo.member_group_ranked(conn, member["id"])
+        gw = {g: d["winner"] for g, d in ranked.items() if d.get("winner")}
+        gr = {g: d["runner"] for g, d in ranked.items() if d.get("runner")}
+        slots = repo.member_slot_picks(conn, member["id"])
+        match_choice = {}
+        for rc, mlist in bracket_structure.ROUND_MATCHES.items():
+            locked = locks["rounds"].get(rc)
+            for m in mlist:
+                no = m["no"]
+                match_choice[no] = existing_winners.get(no) if locked else _int(form.get(f"win_{no}"))
+        round_winners, _, _ = bracket_structure.build_from_match_choices(gw, gr, slots, match_choice)
+        repo.set_round_winners(conn, member["id"], round_winners)
     return RedirectResponse("/bracket", status_code=303)
 
 

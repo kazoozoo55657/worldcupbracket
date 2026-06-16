@@ -28,6 +28,11 @@ def init_db() -> None:
     conn = connect()
     try:
         conn.executescript(_SCHEMA)
+        # Lightweight migration for DBs created before the bracket rework:
+        # add group_pick.rank if it's missing (slot_pick is created by the schema).
+        cols = {r["name"] for r in conn.execute("PRAGMA table_info(group_pick)")}
+        if "rank" not in cols:
+            conn.execute("ALTER TABLE group_pick ADD COLUMN rank INTEGER")
         row = conn.execute("SELECT id FROM pool WHERE id = 1").fetchone()
         if row is None:
             conn.execute(

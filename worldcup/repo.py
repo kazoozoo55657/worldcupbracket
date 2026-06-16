@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import sqlite3
 
+from . import bracket_structure
 from .config import KNOCKOUT_ROUNDS, LAYER_BY_ROUND, GROUP_QUALIFIERS_PER_GROUP
 from .scoring import TournamentState, leaderboard as _leaderboard, MemberScore
 
@@ -29,12 +30,28 @@ def teams_in_group(conn, grp: str) -> list[dict]:
 
 
 def member_group_picks(conn, member_id: int) -> dict[str, set[int]]:
+    """Advancing-team sets per group, for scoring (rank-agnostic)."""
     out: dict[str, set[int]] = {}
     for r in conn.execute(
         "SELECT grp_code, team_id FROM group_pick WHERE member_id = ?", (member_id,)
     ):
         out.setdefault(r["grp_code"], set()).add(r["team_id"])
     return out
+
+
+def member_group_ranked(conn, member_id: int) -> dict[str, dict]:
+    """{grp: {'winner': team_id|None, 'runner': team_id|None}} for bracket filling."""
+    by_grp: dict[str, dict] = {}
+    for r in conn.execute(
+        "SELECT grp_code, team_id, rank FROM group_pick WHERE member_id = ?", (member_id,)
+    ):
+        by_grp.setdefault(r["grp_code"], {})[r["rank"]] = r["team_id"]
+    return {g: {"winner": d.get(1), "runner": d.get(2)} for g, d in by_grp.items()}
+
+
+def member_slot_picks(conn, member_id: int) -> dict[int, int]:
+    return {r["match_no"]: r["team_id"] for r in conn.execute(
+        "SELECT match_no, team_id FROM slot_pick WHERE member_id = ?", (member_id,))}
 
 
 def member_adv_picks(conn, member_id: int) -> dict[str, set[int]]:
@@ -73,71 +90,62 @@ def leaderboard(conn) -> list[MemberScore]:
     return _leaderboard(state, members, gp, ap)
 
 
-# ---- pick saving (validated against locks + monotonicity) ----
+# ---- bracket resolution + pick saving ----
 
 class PickError(Exception):
     pass
 
 
-def save_group_pick(conn, member_id: int, grp: str, team_ids: list[int], locks: dict):
+def resolve_member(conn, member_id: int):
+    """Predicted (participants, winners) per knockout match for this member."""
+    ranked = member_group_ranked(conn, member_id)
+    gw = {g: d["winner"] for g, d in ranked.items() if d.get("winner")}
+    gr = {g: d["runner"] for g, d in ranked.items() if d.get("runner")}
+    slots = member_slot_picks(conn, member_id)
+    rounds = member_adv_picks(conn, member_id)
+    return bracket_structure.resolve(gw, gr, slots, rounds)
+
+
+def set_group_pick(conn, member_id, grp, winner_id, runner_id, locks):
+    """Set a group's predicted winner (rank 1) and runner-up (rank 2). None clears."""
     if locks["groups"].get(grp):
         raise PickError(f"Group {grp} is locked — its first match has kicked off.")
-    if len(team_ids) > GROUP_QUALIFIERS_PER_GROUP:
-        raise PickError(f"Pick at most {GROUP_QUALIFIERS_PER_GROUP} teams to advance.")
     valid = {t["id"] for t in teams_in_group(conn, grp)}
-    for tid in team_ids:
-        if tid not in valid:
+    for tid in (winner_id, runner_id):
+        if tid and tid not in valid:
             raise PickError("A picked team is not in this group.")
-    conn.execute("DELETE FROM group_pick WHERE member_id = ? AND grp_code = ?", (member_id, grp))
-    for tid in team_ids:
+    if winner_id and winner_id == runner_id:
+        raise PickError("Winner and runner-up must be different teams.")
+    conn.execute("DELETE FROM group_pick WHERE member_id=? AND grp_code=?", (member_id, grp))
+    for rank, tid in ((1, winner_id), (2, runner_id)):
+        if tid:
+            conn.execute(
+                "INSERT INTO group_pick (member_id, grp_code, team_id, rank) VALUES (?,?,?,?)",
+                (member_id, grp, tid, rank),
+            )
+    conn.commit()
+
+
+def set_slot_pick(conn, member_id, match_no, team_id):
+    """Set the predicted team for a third-place R32 slot (None clears)."""
+    if match_no not in bracket_structure.THIRD_PLACE_SLOTS:
+        raise PickError("Not a third-place slot.")
+    conn.execute("DELETE FROM slot_pick WHERE member_id=? AND match_no=?", (member_id, match_no))
+    if team_id:
         conn.execute(
-            "INSERT INTO group_pick (member_id, grp_code, team_id) VALUES (?, ?, ?)",
-            (member_id, grp, tid),
+            "INSERT INTO slot_pick (member_id, match_no, team_id) VALUES (?,?,?)",
+            (member_id, match_no, team_id),
         )
     conn.commit()
 
 
-def save_adv_pick(conn, member_id: int, rnd: str, team_ids: list[int], locks: dict):
-    if rnd not in LAYER_BY_ROUND:
-        raise PickError("Unknown knockout round.")
-    if locks["rounds"].get(rnd):
-        raise PickError(f"{LAYER_BY_ROUND[rnd]['label']} is locked — that round has started.")
-    size = LAYER_BY_ROUND[rnd]["size"]
-    if len(team_ids) > size:
-        raise PickError(f"Pick at most {size} teams for {LAYER_BY_ROUND[rnd]['label']}.")
-    # Monotonicity: picks for a deeper round must be a subset of the previous round's picks.
-    idx = KNOCKOUT_ROUNDS.index(rnd)
-    if idx > 0:
-        prev = KNOCKOUT_ROUNDS[idx - 1]
-        prev_picks = member_adv_picks(conn, member_id).get(prev, set())
-        for tid in team_ids:
-            if tid not in prev_picks:
-                raise PickError(
-                    f"Each {LAYER_BY_ROUND[rnd]['label']} pick must first be picked in "
-                    f"{LAYER_BY_ROUND[prev]['label']}."
-                )
-    conn.execute(
-        "DELETE FROM advancement_pick WHERE member_id = ? AND round = ?", (member_id, rnd)
-    )
-    for tid in team_ids:
-        conn.execute(
-            "INSERT INTO advancement_pick (member_id, round, team_id) VALUES (?, ?, ?)",
-            (member_id, rnd, tid),
-        )
-    # Cascade: drop any deeper-round picks that are no longer a subset of this round.
-    picked = set(team_ids)
-    for deeper in KNOCKOUT_ROUNDS[idx + 1:]:
-        rows = conn.execute(
-            "SELECT team_id FROM advancement_pick WHERE member_id = ? AND round = ?",
-            (member_id, deeper),
-        ).fetchall()
-        for row in rows:
-            if row["team_id"] not in picked:
-                conn.execute(
-                    "DELETE FROM advancement_pick WHERE member_id = ? AND round = ? AND team_id = ?",
-                    (member_id, deeper, row["team_id"]),
-                )
-        picked = {r["team_id"] for r in conn.execute(
-            "SELECT team_id FROM advancement_pick WHERE member_id = ? AND round = ?",
-            (member_id, deeper)).fetchall()}
+def set_round_winners(conn, member_id, round_winners: dict[str, set]):
+    """Replace all advancement (match-winner) picks with the given clean sets."""
+    conn.execute("DELETE FROM advancement_pick WHERE member_id=?", (member_id,))
+    for rnd, teams in round_winners.items():
+        for tid in teams:
+            conn.execute(
+                "INSERT INTO advancement_pick (member_id, round, team_id) VALUES (?,?,?)",
+                (member_id, rnd, tid),
+            )
     conn.commit()

@@ -1,5 +1,29 @@
 {% extends "base.html" %}
 {% block title %}My bracket{% endblock %}
+
+{% macro side_cell(m, side) %}
+  <div class="bteam{{ ' win' if side.team and m.winner_id == side.team.id }}">
+    {% if side.third %}
+      <select name="slot_{{ m.no }}" class="thirdsel" {{ 'disabled' if m.locked }}>
+        <option value="">3rd place…</option>
+        {% for o in side.options %}
+          <option value="{{ o.id }}" {{ 'selected' if side.slot_value == o.id }}>{{ o.name }}</option>
+        {% endfor %}
+      </select>
+      {% if side.team %}
+        <label class="adv"><input type="radio" name="win_{{ m.no }}" value="{{ side.team.id }}"
+          {{ 'checked' if m.winner_id == side.team.id }} {{ 'disabled' if not m.can_pick }}>→</label>
+      {% endif %}
+    {% elif side.team %}
+      <label class="bteamlabel"><input type="radio" name="win_{{ m.no }}" value="{{ side.team.id }}"
+        {{ 'checked' if m.winner_id == side.team.id }} {{ 'disabled' if not m.can_pick }}>
+        <span class="tn">{{ side.team.icon }} {{ side.team.name }}</span></label>
+    {% else %}
+      <span class="tbd">{{ side.label }}</span>
+    {% endif %}
+  </div>
+{% endmacro %}
+
 {% block body %}
 <section class="hero compact">
   <h1>{{ member.bracket_name }}</h1>
@@ -8,57 +32,60 @@
     <span class="pill avail"><b>+{{ my.available }}</b> still available</span>
     <span class="pill muted"><b>{{ my.ceiling }}</b> ceiling</span>
   </div>
-  <p class="sub">Pick who <b>advances out of each round</b>. Fill left-to-right — each round
-     offers the teams you advanced in the round before. Save each column.</p>
+  <p class="sub">Pick each group's winner &amp; runner-up up top — those flow into the bracket
+     below. Then choose the winner of every knockout match through to the champion.
+     <b>Save bracket</b> at the bottom (and re-save after changing group picks so the bracket updates).</p>
 </section>
 
-<div class="bracket-cols">
-  {% for layer in layers %}
-    {% set r = layer.round %}
-    {% set locked = locks.rounds.get(r) %}
-    {% set chosen = adv[r] %}
-    <form method="post" action="/bracket/{{ r }}" class="card col {{ 'locked' if locked }}" data-max="{{ layer.size }}">
-      <input type="hidden" name="csrf_token" value="{{ csrf }}">
-      <div class="col-head">
-        <h3>{{ layer.label }}</h3>
-        <div class="col-meta">
-          <span class="tag">{{ chosen|length }}/{{ layer.size }}</span>
-          <span class="tag tag-pts">{{ layer.value }} pt{{ 's' if layer.value != 1 }}</span>
-          {% if locked %}<span class="tag tag-lock">Locked</span>{% endif %}
-        </div>
-      </div>
-      {% if pools[r] %}
-      <ul class="options">
-        {% for t in pools[r] %}
-          {% set elim = not state.alive(t.id) %}
-          {% set reached = t.id in state.reached[r] %}
-          <li>
-            <label class="opt {{ 'elim' if elim }} {{ 'hit' if reached }}">
-              <input type="checkbox" name="team" value="{{ t.id }}"
-                     {{ 'checked' if t.id in chosen }} {{ 'disabled' if locked }}>
-              <span>{{ t.name }}{% if t.grp %} <i class="grp">{{ t.grp }}</i>{% endif %}</span>
-              {% if reached %}<span class="mark ok">✓</span>{% elif elim %}<span class="mark out">out</span>{% endif %}
-            </label>
-          </li>
-        {% endfor %}
-      </ul>
-      {% if not locked %}<button class="save" type="submit">Save {{ layer.label }}</button>{% endif %}
-      {% else %}
-        <p class="empty small">Make your {{ layers[loop.index0 - 1].label }} picks first.</p>
-      {% endif %}
-    </form>
-  {% endfor %}
-</div>
+<form method="post" action="/bracket" id="bform">
+  <input type="hidden" name="csrf_token" value="{{ csrf }}">
 
-<script>
-document.querySelectorAll('form.col:not(.locked)').forEach(f => {
-  const max = parseInt(f.dataset.max, 10);
-  f.addEventListener('change', () => {
-    const boxes = [...f.querySelectorAll('input[name=team]')];
-    const checked = boxes.filter(b => b.checked);
-    boxes.forEach(b => { if (!b.checked) b.disabled = checked.length >= max; });
-  });
-  f.dispatchEvent(new Event('change'));
-});
-</script>
+  <h2 class="sec">Group stage <span class="muted small">· 🥇🥈🥉 by FIFA rank, {{ ranking_date }}</span></h2>
+  <div class="groups-grid">
+    {% for g in groups %}
+      <div class="card group {{ 'locked' if g.locked }}">
+        <div class="group-head">
+          <h3>{{ g.name }}</h3>
+          {% if g.locked %}<span class="tag tag-lock">Locked</span>{% endif %}
+        </div>
+        <ul class="teamlist">
+          {% for t in g.teams %}<li>{{ t.icon }} {{ t.name }}</li>{% endfor %}
+        </ul>
+        <label class="sel">Winner
+          <select name="gw_{{ g.code }}" {{ 'disabled' if g.locked }}>
+            <option value="">—</option>
+            {% for t in g.teams %}<option value="{{ t.id }}" {{ 'selected' if g.winner_id == t.id }}>{{ t.icon }} {{ t.name }}</option>{% endfor %}
+          </select>
+        </label>
+        <label class="sel">Runner-up
+          <select name="gr_{{ g.code }}" {{ 'disabled' if g.locked }}>
+            <option value="">—</option>
+            {% for t in g.teams %}<option value="{{ t.id }}" {{ 'selected' if g.runner_id == t.id }}>{{ t.icon }} {{ t.name }}</option>{% endfor %}
+          </select>
+        </label>
+      </div>
+    {% endfor %}
+  </div>
+
+  <h2 class="sec">Knockout bracket</h2>
+  <div class="bracket-scroll">
+    <div class="bracket-cols">
+      {% for rnd in rounds %}
+        <div class="bcol bcol-{{ rnd.code }}">
+          <div class="bcol-head">{{ rnd.label }}</div>
+          {% for m in rnd.matches %}
+            <div class="bmatch{{ ' locked' if m.locked }}">
+              {{ side_cell(m, m.home) }}
+              {{ side_cell(m, m.away) }}
+            </div>
+          {% endfor %}
+        </div>
+      {% endfor %}
+    </div>
+  </div>
+
+  <div class="savebar">
+    <button class="primary" type="submit">Save bracket</button>
+  </div>
+</form>
 {% endblock %}
