@@ -16,6 +16,7 @@ CREATE TABLE IF NOT EXISTS pool (
 CREATE TABLE IF NOT EXISTS member (
     id            INTEGER PRIMARY KEY AUTOINCREMENT,
     bracket_name  TEXT NOT NULL UNIQUE,       -- unique display name + login id
+    owner_name    TEXT,                       -- real name of the person, shown in (parens)
     pin_hash      TEXT NOT NULL,              -- argon2id
     is_admin      INTEGER NOT NULL DEFAULT 0,
     created_at    TEXT NOT NULL,

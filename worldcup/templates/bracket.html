@@ -35,7 +35,7 @@
 
 {% block body %}
 <section class="hero compact">
-  <h1>{{ member.bracket_name }}</h1>
+  <h1>{{ member.bracket_name }}{% if member.owner_name %} <span class="owner">({{ member.owner_name }})</span>{% endif %}</h1>
   <div class="score-pills">
     <span class="pill"><b>{{ my.total }}</b> points</span>
     <span class="pill avail"><b>+{{ my.available }}</b> still available</span>

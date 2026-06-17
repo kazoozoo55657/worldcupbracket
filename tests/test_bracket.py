@@ -136,6 +136,42 @@ def test_r32_decoupled_from_group_picks():
         cfg.DB_PATH = saved
 
 
+def test_owner_name_register_rename_and_delete():
+    import tempfile
+    import pytest
+    from worldcup.config import config as cfg
+    from worldcup import db as dbm, auth, repo
+
+    saved = cfg.DB_PATH
+    cfg.DB_PATH = tempfile.mktemp(suffix=".db")
+    try:
+        dbm.init_db()
+        conn = dbm.connect()
+        m = auth.register(conn, "Goal Diggers", "1234", "Cole")
+        assert repo.get_member(conn, m["id"])["owner_name"] == "Cole"
+        # owner_name flows to the leaderboard
+        lb = repo.leaderboard(conn)
+        assert any(s.bracket_name == "Goal Diggers" and s.owner_name == "Cole" for s in lb)
+        # register requires an owner name
+        with pytest.raises(ValueError):
+            auth.register(conn, "No Owner", "1234", "")
+        # rename bracket + owner
+        auth.update_account(conn, m["id"], "Net Busters", "Cole K")
+        row = repo.get_member(conn, m["id"])
+        assert row["bracket_name"] == "Net Busters" and row["owner_name"] == "Cole K"
+        # can't rename onto another member's bracket name
+        auth.register(conn, "Other FC", "1234", "Bob")
+        with pytest.raises(ValueError):
+            auth.update_account(conn, m["id"], "Other FC", "Cole K")
+        # self-delete removes the member
+        conn.execute("DELETE FROM member WHERE id = ? AND is_admin = 0", (m["id"],))
+        conn.commit()
+        assert repo.get_member(conn, m["id"]) is None
+        conn.close()
+    finally:
+        cfg.DB_PATH = saved
+
+
 def test_group_locks_only_when_complete():
     """A group locks once all its matches are FINISHED; knockout never locks here."""
     from worldcup.locks import compute_locks

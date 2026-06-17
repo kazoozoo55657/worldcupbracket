@@ -18,7 +18,7 @@
     {% for s in board %}
       <tr>
         <td class="rank">{{ loop.index }}</td>
-        <td class="name">{{ s.bracket_name }}</td>
+        <td class="name">{{ s.bracket_name }}{% if s.owner_name %} <span class="owner">({{ s.owner_name }})</span>{% endif %}</td>
         <td class="num strong">{{ s.total }}</td>
         <td class="num avail">+{{ s.available }}</td>
         <td class="num muted">{{ s.ceiling }}</td>

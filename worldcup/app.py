@@ -133,6 +133,7 @@ def join_submit(
     request: Request,
     code: str = Form(""),
     bracket_name: str = Form(""),
+    owner_name: str = Form(""),
     pin: str = Form(""),
     csrf_token: str = Form(""),
 ):
@@ -143,7 +144,7 @@ def join_submit(
                 "join.html", ctx(request, prefill_code=code, error="Wrong join code."), status_code=400
             )
         try:
-            member = auth.register(conn, bracket_name, pin)
+            member = auth.register(conn, bracket_name, pin, owner_name)
         except ValueError as e:
             return templates.TemplateResponse(
                 "join.html", ctx(request, prefill_code=code, error=str(e)), status_code=400
@@ -281,6 +282,45 @@ def _build_bracket_view(conn, member):
 @app.get("/groups")
 def groups_redirect():
     return RedirectResponse("/bracket", status_code=307)
+
+
+@app.get("/account", response_class=HTMLResponse)
+def account_page(request: Request, member: dict = Depends(require_member)):
+    return templates.TemplateResponse("account.html", ctx(request, member=member, error=None))
+
+
+@app.post("/account")
+def account_update(
+    request: Request,
+    bracket_name: str = Form(""),
+    owner_name: str = Form(""),
+    csrf_token: str = Form(""),
+    member: dict = Depends(require_member),
+):
+    check_csrf(request, csrf_token)
+    with db() as conn:
+        try:
+            auth.update_account(conn, member["id"], bracket_name, owner_name)
+        except ValueError as e:
+            member = {**member, "bracket_name": bracket_name, "owner_name": owner_name}
+            return templates.TemplateResponse(
+                "account.html", ctx(request, member=member, error=str(e)), status_code=400
+            )
+    return RedirectResponse("/bracket", status_code=303)
+
+
+@app.post("/account/delete")
+def account_delete(request: Request, csrf_token: str = Form(""),
+                   member: dict = Depends(require_member)):
+    check_csrf(request, csrf_token)
+    if member.get("is_admin"):
+        raise HTTPException(status_code=403, detail="The admin account can't be self-deleted.")
+    with db() as conn:
+        conn.execute("DELETE FROM member WHERE id = ? AND is_admin = 0", (member["id"],))
+        conn.commit()
+    resp = RedirectResponse("/", status_code=303)
+    resp.delete_cookie(auth.COOKIE_NAME)
+    return resp
 
 
 @app.get("/bracket", response_class=HTMLResponse)

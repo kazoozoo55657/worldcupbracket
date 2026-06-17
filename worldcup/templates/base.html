@@ -14,6 +14,7 @@
     <a href="/">Home</a>
     {% if session %}
       <a href="/bracket">My Bracket</a>
+      <a href="/account">Account</a>
       {% if session.a %}<a href="/admin">Admin</a>{% endif %}
       <form class="inline" method="post" action="/logout">
         <input type="hidden" name="csrf_token" value="{{ csrf }}">

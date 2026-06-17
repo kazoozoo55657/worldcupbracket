@@ -14,6 +14,7 @@ from .db import get_pool
 _ph = PasswordHasher()
 COOKIE_NAME = "wc_session"
 NAME_RE = re.compile(r"^[A-Za-z0-9 _'\-]{2,40}$")
+OWNER_RE = re.compile(r"^[A-Za-z0-9 _'\-.]{1,40}$")
 
 
 def hash_pin(pin: str) -> str:
@@ -41,6 +42,10 @@ def valid_bracket_name(name: str) -> bool:
     return bool(NAME_RE.match(name or ""))
 
 
+def valid_owner_name(name: str) -> bool:
+    return bool(OWNER_RE.match((name or "").strip()))
+
+
 def valid_pin(pin: str) -> bool:
     return bool(pin) and pin.isdigit() and 4 <= len(pin) <= 6
 
@@ -57,23 +62,46 @@ def _is_locked_out(member: dict) -> bool:
     return now_utc() < parse_iso(until)
 
 
-def register(conn, name: str, pin: str) -> dict:
+def register(conn, name: str, pin: str, owner_name: str = "") -> dict:
     """Create a member. Raises ValueError on bad input / duplicate name."""
     name = (name or "").strip()
+    owner_name = (owner_name or "").strip()
     if not valid_bracket_name(name):
         raise ValueError("Bracket name must be 2–40 chars (letters, numbers, spaces, _ - ').")
+    if not valid_owner_name(owner_name):
+        raise ValueError("Enter your name (1–40 chars).")
     if not valid_pin(pin):
         raise ValueError("PIN must be 4–6 digits.")
     if conn.execute("SELECT 1 FROM member WHERE bracket_name = ?", (name,)).fetchone():
         raise ValueError("That bracket name is taken — pick another.")
     ts = iso(now_utc())
     cur = conn.execute(
-        "INSERT INTO member (bracket_name, pin_hash, is_admin, created_at, joined_at) "
-        "VALUES (?, ?, 0, ?, ?)",
-        (name, hash_pin(pin), ts, ts),
+        "INSERT INTO member (bracket_name, owner_name, pin_hash, is_admin, created_at, joined_at) "
+        "VALUES (?, ?, ?, 0, ?, ?)",
+        (name, owner_name, hash_pin(pin), ts, ts),
     )
     conn.commit()
     return {"id": cur.lastrowid, "bracket_name": name, "is_admin": 0}
+
+
+def update_account(conn, member_id: int, name: str, owner_name: str) -> None:
+    """Rename a member's bracket / owner name. Raises ValueError on bad/duplicate input."""
+    name = (name or "").strip()
+    owner_name = (owner_name or "").strip()
+    if not valid_bracket_name(name):
+        raise ValueError("Bracket name must be 2–40 chars (letters, numbers, spaces, _ - ').")
+    if not valid_owner_name(owner_name):
+        raise ValueError("Enter your name (1–40 chars).")
+    dup = conn.execute(
+        "SELECT 1 FROM member WHERE bracket_name = ? AND id != ?", (name, member_id)
+    ).fetchone()
+    if dup:
+        raise ValueError("That bracket name is taken — pick another.")
+    conn.execute(
+        "UPDATE member SET bracket_name = ?, owner_name = ? WHERE id = ?",
+        (name, owner_name, member_id),
+    )
+    conn.commit()
 
 
 def login(conn, name: str, pin: str) -> dict:

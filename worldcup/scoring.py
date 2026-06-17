@@ -146,6 +146,7 @@ class MemberScore:
     ko_earned: int = 0
     ko_available: int = 0
     joined_at: str = ""
+    owner_name: str = ""
 
     @property
     def total(self) -> int:
@@ -167,8 +168,10 @@ def score_member(
     group_picks: dict[str, set[int]],      # grp -> team ids picked to advance
     adv_picks: dict[str, set[int]],        # round -> team ids picked to win that round
     joined_at: str = "",
+    owner_name: str = "",
 ) -> MemberScore:
-    ms = MemberScore(member_id=member_id, bracket_name=bracket_name, joined_at=joined_at)
+    ms = MemberScore(member_id=member_id, bracket_name=bracket_name, joined_at=joined_at,
+                     owner_name=owner_name)
 
     # Group stage.
     all_groups = set(state.group_complete.keys()) | set(group_picks.keys())
@@ -207,6 +210,7 @@ def leaderboard(
             group_picks_by_member.get(m["id"], {}),
             adv_picks_by_member.get(m["id"], {}),
             m.get("joined_at", ""),
+            m.get("owner_name", "") or "",
         )
         for m in members
     ]

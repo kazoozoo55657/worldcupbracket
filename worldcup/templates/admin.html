@@ -13,7 +13,7 @@
     <tbody>
     {% for m in members %}
       <tr>
-        <td class="name">{{ m.bracket_name }}</td>
+        <td class="name">{{ m.bracket_name }}{% if m.owner_name %} <span class="owner">({{ m.owner_name }})</span>{% endif %}</td>
         <td class="muted small">{{ m.joined_at[:10] }}</td>
         <td class="muted small">{{ (m.last_login_at or '—')[:10] }}</td>
         <td>

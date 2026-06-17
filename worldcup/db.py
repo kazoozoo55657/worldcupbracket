@@ -33,6 +33,9 @@ def init_db() -> None:
         cols = {r["name"] for r in conn.execute("PRAGMA table_info(group_pick)")}
         if "rank" not in cols:
             conn.execute("ALTER TABLE group_pick ADD COLUMN rank INTEGER")
+        mcols = {r["name"] for r in conn.execute("PRAGMA table_info(member)")}
+        if "owner_name" not in mcols:
+            conn.execute("ALTER TABLE member ADD COLUMN owner_name TEXT")
         row = conn.execute("SELECT id FROM pool WHERE id = 1").fetchone()
         if row is None:
             conn.execute(
