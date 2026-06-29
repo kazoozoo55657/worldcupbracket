@@ -224,6 +224,12 @@ h2.sec { margin: 28px 0 12px; border-bottom: 1px solid var(--line); padding-bott
              letter-spacing: .5px; font-size: .72rem; height: 14px; margin-bottom: 8px; }
 .kcol-body { flex: 1; display: flex; flex-direction: column; }
 .kmatch { flex: 1 0 0; display: flex; flex-direction: column; justify-content: center; position: relative; }
+/* R32 has the most games per side, so its cards otherwise sit flush. Pad each match
+   internally to open a gap between team-pairs; the cells stay contiguous & equal-height,
+   so the connector geometry and R16 centring are unaffected. */
+.kcol-R32 { --r32pad: 9px; }
+.kcol-R32 .kmatch { padding-top: var(--r32pad); padding-bottom: var(--r32pad); }
+.kcol-R32 .kmno, .kcol-R32 .klock { top: calc(var(--r32pad) - 8px); }
 .kteam { display: flex; align-items: center; background: #0e1426; border: 1px solid var(--line);
          padding: 4px 7px; min-height: 30px; }
 .kmatch > .kteam:first-child { border-radius: 8px 8px 0 0; }
