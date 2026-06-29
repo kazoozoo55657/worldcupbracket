@@ -14,6 +14,7 @@
   var DATA = JSON.parse(blob.textContent || "{}");
   var TEAMS = DATA.teams || {};
   var FINAL_NO = DATA.final_no;
+  var REAL = DATA.real_winners || {}; // {matchNo: teamId that really won}
   var CHOICES = Object.assign({}, DATA.choices); // {matchNo: teamId}
 
   var participants = {}; // {matchNo: [homeId|null, awayId|null]}
@@ -58,17 +59,28 @@
     }
   }
 
-  function teamHtml(no, teamId, label, winnerId, disabled) {
+  function teamHtml(no, teamId, label, winnerId, disabled, actualId) {
     if (!teamId) return '<div class="kteam"><span class="ktbd">' + esc(label) + "</span></div>";
     var t = TEAMS[teamId] || { name: "?", flag: "", medal: null };
-    var win = winnerId === teamId;
-    return (
-      '<div class="kteam' + (win ? " win" : "") + '"><label class="kpick">' +
+    // The slot's predicted occupant is wrong if the feeding game is decided and a
+    // different team really advanced. Don't show the "win" highlight on a wrong pick.
+    var wrong = actualId && actualId !== teamId;
+    var win = winnerId === teamId && !wrong;
+    var pick =
+      '<label class="kpick">' +
       '<input type="radio" name="win_' + no + '" value="' + teamId + '"' +
-      (win ? " checked" : "") + (disabled ? " disabled" : "") + ">" +
+      (winnerId === teamId ? " checked" : "") + (disabled ? " disabled" : "") + ">" +
       flagHtml(t) + '<span class="ktn">' + esc(t.name) + "</span>" + starHtml(t.medal) +
-      "</label></div>"
-    );
+      "</label>";
+    if (wrong) {
+      var at = TEAMS[actualId] || { name: "?", flag: "", medal: null };
+      return (
+        '<div class="kteam wrong"><span class="kactual">' +
+        flagHtml(at) + '<span class="ktn">' + esc(at.name) + "</span>" + starHtml(at.medal) +
+        '<span class="kcheck" title="Actually advanced">✓</span></span>' + pick + "</div>"
+      );
+    }
+    return '<div class="kteam' + (win ? " win" : "") + '">' + pick + "</div>";
   }
 
   function render() {
@@ -83,11 +95,16 @@
       var bothReady = pair[0] && pair[1];
       var disabled = locked || !bothReady;
       var lab = DATA.labels[no] || { home: "", away: "" };
+      // For matches fed by earlier games, the real occupant of each slot is the
+      // winner of its feeding game (R32 slots are the real field, so no feeds).
+      var feeds = DATA.feeds[no];
+      var aHome = feeds ? (REAL[feeds[0]] || null) : null;
+      var aAway = feeds ? (REAL[feeds[1]] || null) : null;
       el.className = "kmatch" + (w ? " done" : "") + (locked ? " locked" : "");
       el.innerHTML =
         '<span class="kmno" title="Official match ' + no + '">M' + no + "</span>" +
-        teamHtml(no, pair[0], lab.home, w, disabled) +
-        teamHtml(no, pair[1], lab.away, w, disabled) +
+        teamHtml(no, pair[0], lab.home, w, disabled, aHome) +
+        teamHtml(no, pair[1], lab.away, w, disabled, aAway) +
         (locked ? '<span class="klock" title="This game has been played — picks are locked">🔒 played</span>' : "");
     }
     var champWrap = document.getElementById("champ-wrap");

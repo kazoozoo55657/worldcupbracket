@@ -285,3 +285,45 @@ def test_knockout_game_locks_and_save_ignores_changes():
         conn.close()
     finally:
         cfg.DB_PATH = saved
+
+
+def test_wrong_pick_slot_shows_actual_winner_over_struck_pick():
+    """When a member's predicted advancer didn't really advance, the next match's slot
+    surfaces the team that actually won (`actual`) above the struck-out pick."""
+    import tempfile
+    from worldcup.config import config as cfg
+    from worldcup import db as dbm, seed_data, repo, app as appmod
+
+    saved = cfg.DB_PATH
+    cfg.DB_PATH = tempfile.mktemp(suffix=".db")
+    try:
+        dbm.init_db()
+        conn = dbm.connect()
+        seed_data.build_synthetic(conn)
+        for g in [chr(ord("A") + i) for i in range(12)]:
+            _finish_group_lower_id_wins(conn, g)
+        tid = {r["name"]: r["id"] for r in conn.execute("SELECT id,name FROM team")}
+        e1, a3 = tid["E1"], tid["A3"]
+        r32 = [r["id"] for r in conn.execute("SELECT id FROM match WHERE round='R32' ORDER BY id")]
+        # Real result of match 74: E1 beat A3 (winner E1). It feeds R16 match 89's home slot.
+        conn.execute("UPDATE match SET home_team_id=?, away_team_id=?, status='FINISHED', "
+                     "winner_team_id=? WHERE id=?", (e1, a3, e1, r32[0]))
+        # Member wrongly picked A3 to win that R32 game, so A3 cascades into match 89.
+        conn.execute("INSERT INTO member (bracket_name, pin_hash, is_admin, created_at, joined_at) "
+                     "VALUES ('wrongpick', 'x', 0, 't', 't')")
+        mid = conn.execute("SELECT id FROM member WHERE bracket_name='wrongpick'").fetchone()["id"]
+        conn.execute("INSERT INTO advancement_pick (member_id, round, team_id) VALUES (?, 'R32', ?)", (mid, a3))
+        conn.commit()
+
+        view = appmod._build_bracket_view(conn, repo.get_member(conn, mid))
+        assert view["ko_data"]["real_winners"].get(74) == e1
+        cols = view["ko_left"] + view["ko_right"]
+        m89 = next(m for c in cols for m in c["matches"] if m["no"] == 89)
+        home = m89["home"]
+        assert home["team"]["id"] == a3          # the (wrong) predicted occupant
+        assert home["actual"] and home["actual"]["id"] == e1   # real advancer shown above it
+        # A correct slot carries no `actual` marker.
+        assert m89["away"]["actual"] is None
+        conn.close()
+    finally:
+        cfg.DB_PATH = saved

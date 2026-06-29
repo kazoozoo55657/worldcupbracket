@@ -6,8 +6,11 @@
 
 {% macro kteam(m, side) %}
   {% set t = side.team %}
-  <div class="kteam{{ ' win' if t and m.winner_id == t.id }}">
+  <div class="kteam{{ ' win' if t and m.winner_id == t.id and not side.actual }}{{ ' wrong' if side.actual }}">
     {% if t %}
+      {% if side.actual %}
+        <span class="kactual">{{ flag(side.actual) }}<span class="ktn">{{ side.actual.name }}</span>{{ star(side.actual.medal) }}<span class="kcheck" title="Actually advanced">✓</span></span>
+      {% endif %}
       <label class="kpick">
         <input type="radio" name="win_{{ m.no }}" value="{{ t.id }}"
           {{ 'checked' if m.winner_id == t.id }} {{ 'disabled' if not m.can_pick }}>

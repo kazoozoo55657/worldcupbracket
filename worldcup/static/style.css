@@ -203,6 +203,16 @@ h2.sec { margin: 28px 0 12px; border-bottom: 1px solid var(--line); padding-bott
 .kpick .star { margin-left: auto; }
 .ktbd { color: var(--muted); font-size: .75rem; font-style: italic; padding-left: 2px; }
 
+/* wrong prediction: the team that REALLY advanced shown above the struck-out pick */
+.kteam.wrong { flex-direction: column; align-items: stretch; gap: 2px; padding-top: 4px; padding-bottom: 4px; }
+.kactual { display: flex; align-items: center; gap: 6px; }
+.kactual .ktn { font-size: .85rem; font-weight: 800; color: var(--ink); }
+.kactual .kcheck { margin-left: auto; color: var(--accent); font-weight: 800; font-size: .8rem; }
+.kteam.wrong .kpick { opacity: .9; }
+.kteam.wrong .kpick .ktn { text-decoration: line-through; color: var(--bad); font-weight: 400; }
+.kteam.wrong .kpick .flag { opacity: .45; filter: grayscale(1); }
+.kteam.wrong .kpick .star { opacity: .45; }
+
 /* a knockout game that has kicked off: dimmed, non-interactive, with a "played" tag. */
 .kmatch.locked .kteam { opacity: .82; }
 .kmatch.locked .kpick { cursor: default; }

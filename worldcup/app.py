@@ -259,14 +259,29 @@ def _build_bracket_view(conn, member, readonly=False):
         t = teams.get(tid) if tid else None
         return tview(t, medals.get(tid)) if t else None
 
+    def actual_winner_for_slot(no, which):
+        """The team that REALLY advanced into this slot — the winner of the game
+        feeding it, once that game is decided. None for R32 slots (already the real
+        field) or while the feeding game is undecided."""
+        if no in bracket_structure.NO_TO_FED:
+            feed = bracket_structure.NO_TO_FED[no]["feeds"][0 if which == "home" else 1]
+            return ko_status.get(feed, {}).get("winner_id")
+        return None
+
     def side(no, which, tid):
         if tid:
-            return {"team": disp(tid), "label": None}
+            # If the feeding game is decided and a DIFFERENT team really advanced,
+            # the member's predicted occupant of this slot was wrong: surface the
+            # real team so the template can show it above the struck-out pick.
+            actual = actual_winner_for_slot(no, which)
+            wrong = bool(actual and actual != tid)
+            return {"team": disp(tid), "label": None,
+                    "actual": disp(actual) if wrong else None}
         if no in bracket_structure.NO_TO_R32:
             spec = bracket_structure.NO_TO_R32[no]["home" if which == "home" else "away"]
-            return {"team": None, "label": _slot_label(spec)}
+            return {"team": None, "label": _slot_label(spec), "actual": None}
         feed = bracket_structure.NO_TO_FED[no]["feeds"][0 if which == "home" else 1]
-        return {"team": None, "label": f"Winner M{feed}"}
+        return {"team": None, "label": f"Winner M{feed}", "actual": None}
 
     def ko_locked(no):
         """True once the REAL game with this official number has kicked off — locked
@@ -309,6 +324,10 @@ def _build_bracket_view(conn, member, readonly=False):
         "labels": {no: slot_labels(no) for no in all_nos},
         "locks": {no: ko_locked(no) for no in all_nos},
         "choices": {no: w for no, w in winners.items() if w},
+        # Real winner per official match number (finished games only), so the
+        # client can flag a slot whose predicted occupant didn't really advance.
+        "real_winners": {no: st["winner_id"] for no, st in ko_status.items()
+                         if st.get("winner_id")},
         "final_no": final_no,
     }
 
