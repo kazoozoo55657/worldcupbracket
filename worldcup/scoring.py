@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from . import bracket_structure
 from .config import (
     KNOCKOUT_LAYERS,
     KNOCKOUT_ROUNDS,
@@ -19,6 +20,9 @@ from .config import (
 )
 
 FINISHED = "FINISHED"
+# A game is locked from the moment it kicks off (goes live) through full time.
+STARTED_STATUSES = ("LIVE", "FINISHED")
+FINAL_NO = bracket_structure.FINAL_MATCH["no"]
 
 
 def _d(row) -> dict:
@@ -58,6 +62,85 @@ def compute_standings(group_matches: list[dict]) -> list[int]:
         stats.keys(),
         key=lambda t: (-stats[t]["pts"], -(stats[t]["gf"] - stats[t]["ga"]), -stats[t]["gf"], t),
     )
+
+
+def real_knockout_status(matches) -> dict[int, dict]:
+    """Map each official knockout match number to the REAL fixture's status + winner.
+
+    Returns ``{match_no: {'status', 'winner_id'}}`` for every bracket game number
+    (73..104, per ``bracket_structure``) whose real fixture can be identified from
+    results so far. This is member-independent: it reconstructs the *actual*
+    tournament tree and ties it to the official match numbers, so a game can be
+    locked by its number once it has been played — regardless of who any member
+    predicted would be in it.
+
+    R32 numbers are pinned from the real group results (winner/runner/3rd-place
+    fillers); each later round's number is identified by the real winners of the two
+    games that feed it. Numbers not yet resolvable (teams undetermined) are absent.
+    """
+    matches = [_d(m) for m in matches]
+    state = TournamentState.from_matches(matches)
+
+    # Real 1st/2nd of each finished group.
+    agw, agr = {}, {}
+    for g, ordered in state.standings.items():
+        if state.group_complete.get(g) and len(ordered) >= 2:
+            agw[g], agr[g] = ordered[0], ordered[1]
+
+    # Index real knockout fixtures by round and unordered participant pair; note R32
+    # opponents so we can read off the actual third-place team in each "3" slot.
+    fixtures: dict[str, dict[frozenset, dict]] = {r: {} for r in KNOCKOUT_ROUNDS}
+    r32_opp: dict[int, int] = {}
+    for m in matches:
+        r = m.get("round")
+        h, a = m.get("home_team_id"), m.get("away_team_id")
+        if r in fixtures and h and a:
+            fixtures[r][frozenset((h, a))] = m
+            if r == "R32":
+                r32_opp[h] = a
+                r32_opp[a] = h
+
+    aslot: dict[int, int] = {}
+    for bm in bracket_structure.R32_MATCHES:
+        if bm["away"][0] != "3":
+            continue
+        kind, g = bm["home"]
+        ht = agw.get(g) if kind == "W" else agr.get(g)
+        if ht and ht in r32_opp:
+            aslot[bm["no"]] = r32_opp[ht]
+
+    real_parts_r32, _ = bracket_structure.resolve(agw, agr, aslot, {})
+
+    out: dict[int, dict] = {}
+    real_winner: dict[int, int] = {}
+
+    def record(no, h, a):
+        fx = fixtures[bracket_structure.round_of(no)].get(frozenset((h, a))) if (h and a) else None
+        if not fx:
+            return
+        out[no] = {"status": fx.get("status"), "winner_id": fx.get("winner_team_id")}
+        if fx.get("status") == FINISHED and fx.get("winner_team_id"):
+            real_winner[no] = fx["winner_team_id"]
+
+    for bm in bracket_structure.R32_MATCHES:
+        h, a = real_parts_r32.get(bm["no"], (None, None))
+        record(bm["no"], h, a)
+    for bm in bracket_structure.FED_MATCHES:
+        f0, f1 = bm["feeds"]
+        record(bm["no"], real_winner.get(f0), real_winner.get(f1))
+
+    return out
+
+
+def tournament_complete(state: "TournamentState") -> bool:
+    """True once the Final has been played (a real champion exists)."""
+    return bool(state.reached.get("F"))
+
+
+def champion_team_id(state: "TournamentState") -> int | None:
+    """The real World Cup winner's team id, or None until the Final is decided."""
+    won = state.reached.get("F") or set()
+    return next(iter(won), None)
 
 
 @dataclass

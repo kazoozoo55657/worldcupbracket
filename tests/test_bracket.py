@@ -184,3 +184,104 @@ def test_group_locks_only_when_complete():
     assert locks["groups"]["A"] is True     # complete -> locked
     assert locks["groups"]["B"] is False    # still has a game left -> open
     assert locks["rounds"]["R32"] is False  # knockout stays open
+
+
+def _finish_group_lower_id_wins(conn, grp):
+    """Play every match in a group 1-0 to the lower team id (deterministic standings)."""
+    for m in conn.execute(
+        "SELECT id, home_team_id, away_team_id FROM match WHERE grp_code=?", (grp,)
+    ).fetchall():
+        w = min(m["home_team_id"], m["away_team_id"])
+        hs, as_ = (1, 0) if m["home_team_id"] < m["away_team_id"] else (0, 1)
+        conn.execute("UPDATE match SET status='FINISHED', home_score=?, away_score=?, "
+                     "winner_team_id=? WHERE id=?", (hs, as_, w, m["id"]))
+
+
+def test_real_knockout_status_locks_by_official_number():
+    """Knockout games are pinned to official match numbers and lock by number once the
+    real fixture kicks off — including deeper rounds, regardless of any member's picks."""
+    import tempfile
+    from worldcup.config import config as cfg
+    from worldcup import db as dbm, seed_data, repo
+    from worldcup.scoring import real_knockout_status
+
+    saved = cfg.DB_PATH
+    cfg.DB_PATH = tempfile.mktemp(suffix=".db")
+    try:
+        dbm.init_db()
+        conn = dbm.connect()
+        seed_data.build_synthetic(conn)
+        for g in [chr(ord("A") + i) for i in range(12)]:
+            _finish_group_lower_id_wins(conn, g)  # standings = teams in ascending id
+        tid = {r["name"]: r["id"] for r in conn.execute("SELECT id,name FROM team")}
+        e1, i1, t_a3, t_b3 = tid["E1"], tid["I1"], tid["A3"], tid["B3"]
+        r32 = [r["id"] for r in conn.execute("SELECT id FROM match WHERE round='R32' ORDER BY id")]
+        # Match 74 = winner(E) vs a 3rd; match 77 = winner(I) vs a 3rd. Both played.
+        conn.execute("UPDATE match SET home_team_id=?, away_team_id=?, status='FINISHED', "
+                     "winner_team_id=? WHERE id=?", (e1, t_a3, e1, r32[0]))
+        conn.execute("UPDATE match SET home_team_id=?, away_team_id=?, status='FINISHED', "
+                     "winner_team_id=? WHERE id=?", (i1, t_b3, i1, r32[1]))
+        # The real R16 match 89 (winners of 74 & 77) is now underway.
+        r16 = conn.execute("SELECT id FROM match WHERE round='R16' ORDER BY id LIMIT 1").fetchone()["id"]
+        conn.execute("UPDATE match SET home_team_id=?, away_team_id=?, status='LIVE' WHERE id=?",
+                     (e1, i1, r16))
+        conn.commit()
+
+        status = real_knockout_status(repo.all_matches(conn))
+        assert status[74]["status"] == "FINISHED" and status[74]["winner_id"] == e1
+        assert status[77]["status"] == "FINISHED" and status[77]["winner_id"] == i1
+        assert status[89]["status"] == "LIVE"   # deeper game locks by number, even mid-match
+        assert 73 not in status                 # its fixture wasn't set -> not lockable yet
+        conn.close()
+    finally:
+        cfg.DB_PATH = saved
+
+
+def test_knockout_game_locks_and_save_ignores_changes():
+    """A played R32 game shows as locked, and POSTing a new winner for it is ignored."""
+    import re
+    import tempfile
+    from fastapi.testclient import TestClient
+    from worldcup.config import config as cfg
+    from worldcup import db as dbm, repo, seed_data, auth, app as appmod
+
+    saved = cfg.DB_PATH
+    cfg.DB_PATH = tempfile.mktemp(suffix=".db")
+    try:
+        dbm.init_db()
+        conn = dbm.connect()
+        seed_data.build_synthetic(conn)
+        # Finish groups A and B so match 73's participants (2A vs 2B) are both real.
+        _finish_group_lower_id_wins(conn, "A")
+        _finish_group_lower_id_wins(conn, "B")
+        ids = {r["name"]: r["id"] for r in conn.execute("SELECT id,name FROM team WHERE grp IN ('A','B')")}
+        a2, b2 = ids["A2"], ids["B2"]   # runners-up = 2nd-lowest id in each group
+        # The real R32 fixture between 2A and 2B has been played; 2A won.
+        r32 = conn.execute("SELECT id FROM match WHERE round='R32' ORDER BY id LIMIT 1").fetchone()["id"]
+        conn.execute("UPDATE match SET home_team_id=?, away_team_id=?, status='FINISHED', "
+                     "winner_team_id=? WHERE id=?", (a2, b2, a2, r32))
+        # A member who picked 2A to win that game (match 73).
+        conn.execute("INSERT INTO member (bracket_name, pin_hash, is_admin, created_at, joined_at) "
+                     "VALUES ('locktest', 'x', 0, 't', 't')")
+        mid = conn.execute("SELECT id FROM member WHERE bracket_name='locktest'").fetchone()["id"]
+        conn.execute("INSERT INTO advancement_pick (member_id, round, team_id) VALUES (?, 'R32', ?)", (mid, a2))
+        conn.commit()
+
+        # The bracket view marks match 73 locked, with 2A already its winner.
+        view = appmod._build_bracket_view(conn, repo.get_member(conn, mid))
+        assert view["ko_data"]["locks"][73] is True
+        assert view["ko_data"]["choices"][73] == a2
+
+        with TestClient(appmod.app) as client:
+            client.cookies.set(auth.COOKIE_NAME, auth.make_session(mid, False))
+            page = client.get("/bracket")
+            token = re.search(r'name="csrf_token" value="([^"]+)"', page.text).group(1)
+            # Attempt to flip the played game's winner to 2B — must be ignored.
+            client.post("/bracket", data={"csrf_token": token, "win_73": str(b2)})
+
+        r32_picks = {r["team_id"] for r in conn.execute(
+            "SELECT team_id FROM advancement_pick WHERE member_id=? AND round='R32'", (mid,))}
+        assert a2 in r32_picks and b2 not in r32_picks
+        conn.close()
+    finally:
+        cfg.DB_PATH = saved

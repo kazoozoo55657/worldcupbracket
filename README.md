@@ -28,9 +28,32 @@ Perfect knockout = **80 pts**. Picks are *monotonic*: a champion pick must also 
 in every earlier layer (the UI enforces this — each round draws from the previous round's
 survivors).
 
-**Locking:** a pick is editable only until the deciding match kicks off. Group picks lock
-at that group's first kickoff; each knockout layer locks at that round's first match.
-Late joiners can fill anything not yet started — already-played units score 0 for them.
+**Live autofill:** the knockout bracket fills itself in as you click. Picking a winner
+cascades that team straight into the next round (and onward), with no "Save bracket"
+round-trip between rounds — the whole tree is recomputed client-side from one source of
+truth (the real R32 field + your per-match winner picks), mirroring
+`bracket_structure.resolve` so the final Save produces the same result. See
+`static/bracket.js`.
+
+**Locking:** a pick is editable only until the deciding game kicks off.
+- *Group stage* — a group locks once its **last match is played** (every match
+  `FINISHED`), so no one can revise their original group picks once the group is decided.
+- *Knockout* — locks **per game, by official match number**, not per round. Every bracket
+  game carries its FIFA match number (73–104, from `bracket_structure`) and is shown with
+  an `M##` badge so the bracket mirrors the published draw. `scoring.real_knockout_status`
+  reconstructs the *actual* tournament tree and pins each official number to its real
+  fixture (R32 from group results; each later round from the real winners that feed it).
+  The instant a real game kicks off (status `LIVE`/`FINISHED`) that numbered game freezes
+  for **everyone** — 🔒 *played* tag, radios disabled, any submitted change ignored
+  server-side — **regardless of who a member predicted would be in it**, even if their
+  picks were already eliminated.
+
+Late joiners can fill anything not yet started — already-played games are locked, so they
+can neither interact with nor earn points on them.
+
+**Champion banner:** once the Final is played, the scoreboard shows a "Congratulations
+*<bracket>* — you're the Champion!" banner crowning the league winner (top of the
+leaderboard), also noting which national team lifted the World Cup.
 
 **Available points remaining:** the max additional points a member can still earn from
 picks that are still alive and undecided. `total + available` only ever decreases.

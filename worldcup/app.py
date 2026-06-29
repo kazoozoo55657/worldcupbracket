@@ -16,7 +16,8 @@ from . import auth, repo, rankings, bracket_structure, flags
 from .config import config, KNOCKOUT_LAYERS, LAYER_BY_ROUND, KNOCKOUT_ROUNDS, parse_iso, now_utc
 from .db import connect, init_db, get_pool
 from .locks import compute_locks
-from .scoring import TournamentState, score_member
+from .scoring import (TournamentState, score_member, real_knockout_status,
+                      tournament_complete, champion_team_id, STARTED_STATUSES)
 
 BASE_DIR = Path(__file__).parent
 templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
@@ -118,8 +119,15 @@ def home(request: Request):
     with db() as conn:
         board = repo.leaderboard(conn)
         pool = dict(get_pool(conn))
+        state = repo.build_state(conn)
+        wc_winner_id = champion_team_id(state)
+        wc_winner = repo.teams_by_id(conn).get(wc_winner_id) if wc_winner_id else None
+    # Once the Final is played, crown the league winner (top of the leaderboard).
+    league_champion = board[0] if (board and tournament_complete(state)) else None
     return templates.TemplateResponse(
-        "home.html", ctx(request, board=board, pool=pool, layers=KNOCKOUT_LAYERS)
+        "home.html", ctx(request, board=board, pool=pool, layers=KNOCKOUT_LAYERS,
+                         league_champion=league_champion,
+                         wc_winner_name=(wc_winner["name"] if wc_winner else None))
     )
 
 
@@ -216,9 +224,10 @@ def _medal_map(conn):
     return m
 
 
-def _build_bracket_view(conn, member):
+def _build_bracket_view(conn, member, readonly=False):
     matches_rows = repo.all_matches(conn)
     locks = compute_locks(matches_rows)
+    ko_status = real_knockout_status(matches_rows)
     teams = repo.teams_by_id(conn)
     medals = _medal_map(conn)
     ranked = repo.member_group_ranked(conn, member["id"])
@@ -259,11 +268,18 @@ def _build_bracket_view(conn, member):
         feed = bracket_structure.NO_TO_FED[no]["feeds"][0 if which == "home" else 1]
         return {"team": None, "label": f"Winner M{feed}"}
 
+    def ko_locked(no):
+        """True once the REAL game with this official number has kicked off — locked
+        for everyone, regardless of who a member predicted would be playing in it."""
+        return ko_status.get(no, {}).get("status") in STARTED_STATUSES
+
     def kmatch(no):
         h, a = participants.get(no, (None, None))
-        rlocked = locks["rounds"].get(bracket_structure.round_of(no), False)
+        locked = ko_locked(no)
         return {"no": no, "home": side(no, "home", h), "away": side(no, "away", a),
-                "winner_id": winners.get(no), "can_pick": bool(h and a) and not rlocked}
+                "winner_id": winners.get(no), "locked": locked,
+                "real_winner_id": ko_status.get(no, {}).get("winner_id"),
+                "can_pick": (not readonly) and bool(h and a) and not locked}
 
     def columns(spec):
         return [{"round": rc, "label": LAYER_BY_ROUND[rc]["label"],
@@ -272,11 +288,35 @@ def _build_bracket_view(conn, member):
     final_no = bracket_structure.FINAL_MATCH["no"]
     ko_open = any(any(participants.get(m["no"], (None, None))) for m in bracket_structure.R32_MATCHES)
 
+    # Data blob driving the client-side live autofill (see static/bracket.js): picking
+    # a winner cascades the team into the next round instantly, with no save needed.
+    def slot_labels(no):
+        if no in bracket_structure.NO_TO_R32:
+            m = bracket_structure.NO_TO_R32[no]
+            return {"home": _slot_label(m["home"]), "away": _slot_label(m["away"])}
+        feeds = bracket_structure.NO_TO_FED[no]["feeds"]
+        return {"home": f"Winner M{feeds[0]}", "away": f"Winner M{feeds[1]}"}
+
+    all_nos = [m["no"] for m in bracket_structure.R32_MATCHES] + \
+              [m["no"] for m in bracket_structure.FED_MATCHES]
+    ko_data = {
+        "r32": {m["no"]: list(participants.get(m["no"], (None, None)))
+                for m in bracket_structure.R32_MATCHES},
+        "feeds": {m["no"]: list(m["feeds"]) for m in bracket_structure.FED_MATCHES},
+        "teams": {tid: {"name": t["name"], "flag": flags.flag_img(t["name"]),
+                        "emoji": flags.flag_emoji(t["name"]), "medal": medals.get(tid)}
+                  for tid, t in teams.items()},
+        "labels": {no: slot_labels(no) for no in all_nos},
+        "locks": {no: ko_locked(no) for no in all_nos},
+        "choices": {no: w for no, w in winners.items() if w},
+        "final_no": final_no,
+    }
+
     return dict(groups=groups_ctx, my=my, ranking_date=rankings.RANKING_DATE,
                 ko_left=columns(bracket_structure.LEFT_COLUMNS),
                 ko_right=columns(bracket_structure.RIGHT_COLUMNS),
                 ko_final=kmatch(final_no), champion=disp(winners.get(final_no)),
-                ko_open=ko_open)
+                ko_open=ko_open, ko_data=ko_data, readonly=readonly)
 
 
 @app.get("/groups")
@@ -330,12 +370,28 @@ def bracket_page(request: Request, member: dict = Depends(require_member)):
     return templates.TemplateResponse("bracket.html", ctx(request, member=member, **view))
 
 
+@app.get("/bracket/{member_id}", response_class=HTMLResponse)
+def view_member_bracket(request: Request, member_id: int, viewer: dict = Depends(require_member)):
+    """Read-only view of another member's bracket. Any logged-in member can look,
+    but picks are disabled so no one can change someone else's bracket."""
+    if member_id == viewer["id"]:
+        return RedirectResponse("/bracket", status_code=303)
+    with db() as conn:
+        target = repo.get_member(conn, member_id)
+        if not target or target.get("is_admin"):
+            raise HTTPException(status_code=404, detail="Bracket not found.")
+        view = _build_bracket_view(conn, target, readonly=True)
+    return templates.TemplateResponse("bracket.html", ctx(request, member=target, **view))
+
+
 @app.post("/bracket")
 async def save_bracket(request: Request, member: dict = Depends(require_member)):
     form = await request.form()
     check_csrf(request, form.get("csrf_token", ""))
     with db() as conn:
-        locks = compute_locks(repo.all_matches(conn))
+        matches_rows = repo.all_matches(conn)
+        locks = compute_locks(matches_rows)
+        ko_status = real_knockout_status(matches_rows)
         _, existing_winners = repo.resolve_member(conn, member["id"])
         # Group winner/runner picks (skip locked groups).
         for g in repo.all_groups(conn):
@@ -348,13 +404,16 @@ async def save_bracket(request: Request, member: dict = Depends(require_member))
             except repo.PickError:
                 pass  # ignore inconsistent group input; user can re-pick
         # Match winners are validated against the REAL R32 field (auto-filled from
-        # football-data), so the knockout is independent of group-stage picks.
+        # football-data), so the knockout is independent of group-stage picks. A game
+        # whose real fixture (by official match number) has kicked off is locked for
+        # everyone: keep the member's existing pick and ignore any submitted change,
+        # so completed games can't be re-picked no matter who they predicted.
         gw, gr, slots = repo.actual_r32_fillers(conn)
         match_choice = {}
         for rc, mlist in bracket_structure.ROUND_MATCHES.items():
-            locked = locks["rounds"].get(rc)
             for m in mlist:
                 no = m["no"]
+                locked = ko_status.get(no, {}).get("status") in STARTED_STATUSES
                 match_choice[no] = existing_winners.get(no) if locked else _int(form.get(f"win_{no}"))
         round_winners, _, _ = bracket_structure.build_from_match_choices(gw, gr, slots, match_choice)
         repo.set_round_winners(conn, member["id"], round_winners)

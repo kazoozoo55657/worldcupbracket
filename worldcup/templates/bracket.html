@@ -20,9 +20,11 @@
 {% endmacro %}
 
 {% macro kmatch(m) %}
-  <div class="kmatch{{ ' done' if m.winner_id }}">
+  <div class="kmatch{{ ' done' if m.winner_id }}{{ ' locked' if m.locked }}" id="m{{ m.no }}">
+    <span class="kmno" title="Official match {{ m.no }}">M{{ m.no }}</span>
     {{ kteam(m, m.home) }}
     {{ kteam(m, m.away) }}
+    {% if m.locked %}<span class="klock" title="This game has been played — picks are locked">🔒 played</span>{% endif %}
   </div>
 {% endmacro %}
 
@@ -35,19 +37,28 @@
 
 {% block body %}
 <section class="hero compact">
-  <h1>{{ member.bracket_name }}{% if member.owner_name %} <span class="owner">({{ member.owner_name }})</span>{% endif %}</h1>
+  {% if readonly %}<a class="back" href="/">← Back to leaderboard</a>{% endif %}
+  <h1>{{ member.bracket_name }}{% if member.owner_name %} <span class="owner">({{ member.owner_name }})</span>{% endif %}{% if readonly %} <span class="tag">read-only</span>{% endif %}</h1>
   <div class="score-pills">
     <span class="pill"><b>{{ my.total }}</b> points</span>
     <span class="pill avail"><b>+{{ my.available }}</b> still available</span>
     <span class="pill muted"><b>{{ my.ceiling }}</b> ceiling</span>
   </div>
-  <p class="sub">Group picks are a separate, lighter track. The knockout is independent —
-     the real Round of 32 fills in from results as groups finish, and you score by picking
-     the winners up to the champion. <b>Save bracket</b> at the bottom.</p>
+  {% if readonly %}
+  <p class="sub">You're viewing <b>{{ member.bracket_name }}</b>'s picks. This is another member's
+     bracket, so the picks are locked — you can't change someone else's bracket.</p>
+  {% else %}
+  <p class="sub">Group picks are a separate, lighter track and lock once a group's last
+     game is played. The knockout is independent — the real Round of 32 fills in from
+     results as groups finish, and you score by picking the winners up to the champion.
+     Each winner you pick <b>flows straight into the next round</b> as you click — no need
+     to save between rounds. A 🔒 game has already kicked off and can't be changed.
+     <b>Save bracket</b> at the bottom when you're done.</p>
+  {% endif %}
 </section>
 
-<form method="post" action="/bracket" id="bform">
-  <input type="hidden" name="csrf_token" value="{{ csrf }}">
+{% if readonly %}<div id="bform">{% else %}<form method="post" action="/bracket" id="bform">
+  <input type="hidden" name="csrf_token" value="{{ csrf }}">{% endif %}
 
   <h2 class="sec">Group stage <span class="muted small">· pick the 2 to advance · <span class="star gold">★</span>#1 <span class="star silver">★</span>#2 <span class="star bronze">★</span>#3 by FIFA rank, {{ ranking_date }}</span></h2>
   <div class="groups-grid">
@@ -61,13 +72,13 @@
           {% for t in g.teams %}<li>{{ flag(t) }}{{ t.name }} {{ star(t.medal) }}</li>{% endfor %}
         </ul>
         <label class="sel">Advances (1st)
-          <select name="gw_{{ g.code }}" {{ 'disabled' if g.locked }}>
+          <select name="gw_{{ g.code }}" {{ 'disabled' if g.locked or readonly }}>
             <option value="">—</option>
             {% for t in g.teams %}<option value="{{ t.id }}" {{ 'selected' if g.winner_id == t.id }}>{{ t.emoji }} {{ t.name }}</option>{% endfor %}
           </select>
         </label>
         <label class="sel">Advances (2nd)
-          <select name="gr_{{ g.code }}" {{ 'disabled' if g.locked }}>
+          <select name="gr_{{ g.code }}" {{ 'disabled' if g.locked or readonly }}>
             <option value="">—</option>
             {% for t in g.teams %}<option value="{{ t.id }}" {{ 'selected' if g.runner_id == t.id }}>{{ t.emoji }} {{ t.name }}</option>{% endfor %}
           </select>
@@ -76,7 +87,7 @@
     {% endfor %}
   </div>
 
-  <h2 class="sec">Knockout bracket {% if champion %}· <span class="champ">🏆 {{ flag(champion) }}{{ champion.name }}</span>{% endif %}</h2>
+  <h2 class="sec">Knockout bracket <span id="champ-wrap">{% if champion %}· <span class="champ">🏆 {{ flag(champion) }}{{ champion.name }}</span>{% endif %}</span></h2>
   {% if not ko_open %}
     <p class="muted">The bracket opens as group results come in — the real Round of 32 teams
        fill in automatically, then you pick winners from there.</p>
@@ -96,8 +107,15 @@
     </div>
   </div>
 
+  {% if not readonly %}
   <div class="savebar">
     <button class="primary" type="submit">Save bracket</button>
   </div>
-</form>
+  {% endif %}
+{% if readonly %}</div>{% else %}</form>{% endif %}
+
+{% if not readonly %}
+<script type="application/json" id="ko-data">{{ ko_data|tojson }}</script>
+<script src="/static/bracket.js?v={{ static_ver }}" defer></script>
+{% endif %}
 {% endblock %}

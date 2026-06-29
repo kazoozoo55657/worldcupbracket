@@ -10,25 +10,36 @@
 <body>
 <header class="topbar">
   <a class="brand" href="/">⚽ <span>World&nbsp;Cup&nbsp;2026</span> Pool</a>
-  <nav>
-    <a href="/">Home</a>
-    {% if session %}
-      <a href="/bracket">My Bracket</a>
-      <a href="/account">Account</a>
-      {% if session.a %}<a href="/admin">Admin</a>{% endif %}
-      <form class="inline" method="post" action="/logout">
-        <input type="hidden" name="csrf_token" value="{{ csrf }}">
-        <button class="linkish" type="submit">Log out</button>
-      </form>
-    {% else %}
-      <a href="/login">Log in</a>
-      <a class="cta" href="/join">Join</a>
-    {% endif %}
-  </nav>
+  <a class="navlink" href="/">Home</a>
+  {% if session %}
+    <a class="navlink" href="/bracket">My Bracket</a>
+    <details class="menu">
+      <summary class="hamburger" aria-label="Menu" title="Menu">☰</summary>
+      <div class="menu-pop">
+        <a href="/account">Account</a>
+        {% if session.a %}<a href="/admin">Admin</a>{% endif %}
+        <form method="post" action="/logout">
+          <input type="hidden" name="csrf_token" value="{{ csrf }}">
+          <button class="linkish" type="submit">Log out</button>
+        </form>
+      </div>
+    </details>
+  {% else %}
+    <a class="navlink" href="/login">Log in</a>
+    <a class="cta" href="/join">Join</a>
+  {% endif %}
 </header>
 <main>
   {% block body %}{% endblock %}
 </main>
 <footer class="foot">Hosted on Yggdrasil · picks lock at kickoff</footer>
+<script>
+  // Close the top-right dropdown when clicking anywhere outside it.
+  document.addEventListener("click", function (e) {
+    document.querySelectorAll("details.menu[open]").forEach(function (d) {
+      if (!d.contains(e.target)) d.removeAttribute("open");
+    });
+  });
+</script>
 </body>
 </html>
