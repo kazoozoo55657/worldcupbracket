@@ -23,23 +23,46 @@ a { color: var(--accent-2); text-decoration: none; }
 a:hover { text-decoration: underline; }
 
 .topbar {
-  display: flex; align-items: center; justify-content: space-between;
+  display: flex; align-items: center; justify-content: space-between; gap: 14px;
   padding: 14px 22px; border-bottom: 1px solid var(--line);
   background: rgba(10,14,28,.6); backdrop-filter: blur(8px);
   position: sticky; top: 0; z-index: 10;
 }
 .brand { font-weight: 800; color: var(--ink); letter-spacing: .3px; }
 .brand span { color: var(--accent); }
-.topbar nav { display: flex; align-items: center; gap: 18px; }
-.topbar nav a { color: var(--muted); font-weight: 600; }
-.topbar nav a:hover { color: var(--ink); }
+.topbar .navlink { color: var(--muted); font-weight: 600; }
+.topbar .navlink:hover { color: var(--ink); }
 .cta { background: var(--accent); color: #04231a !important; padding: 7px 14px; border-radius: 999px; }
 .cta:hover { text-decoration: none; filter: brightness(1.05); }
 .linkish { background: none; border: 0; color: var(--muted); cursor: pointer; font: inherit; font-weight: 600; }
 .linkish:hover { color: var(--ink); }
 .inline { display: inline; }
 
+/* top-right hamburger dropdown (Account / Admin / Log out) */
+.menu { position: relative; }
+.menu .hamburger { list-style: none; cursor: pointer; font-size: 1.35rem; line-height: 1;
+  color: var(--muted); padding: 2px 8px; border-radius: 8px; user-select: none; }
+.menu .hamburger::-webkit-details-marker { display: none; }
+.menu .hamburger:hover, .menu[open] .hamburger { color: var(--ink); background: rgba(106,166,255,.1); }
+.menu-pop { position: absolute; right: 0; top: calc(100% + 12px); min-width: 168px;
+  display: flex; flex-direction: column; gap: 2px; padding: 8px;
+  background: var(--panel-2); border: 1px solid var(--line); border-radius: 12px;
+  box-shadow: 0 14px 34px rgba(0,0,0,.4); z-index: 20; }
+.menu-pop a, .menu-pop .linkish { display: block; width: 100%; text-align: left;
+  padding: 9px 12px; border-radius: 8px; color: var(--muted); font-weight: 600; }
+.menu-pop a:hover, .menu-pop .linkish:hover { background: rgba(106,166,255,.12);
+  color: var(--ink); text-decoration: none; }
+.menu-pop form { margin: 0; }
+
+@media (max-width: 560px) {
+  .topbar { padding: 12px 14px; gap: 8px; }
+  .brand { font-size: .92rem; }
+  .topbar .navlink { font-size: .92rem; }
+}
+
 main { max-width: 1100px; margin: 0 auto; padding: 26px 20px 60px; }
+.hero .back { display: inline-block; color: var(--muted); font-weight: 600; font-size: .9rem; margin-bottom: 4px; }
+.hero .back:hover { color: var(--ink); }
 .hero h1 { font-size: 2rem; margin: .2em 0; }
 .hero.compact h1 { font-size: 1.5rem; }
 .hero .sub, .sub { color: var(--muted); max-width: 60ch; }
@@ -52,15 +75,27 @@ main { max-width: 1100px; margin: 0 auto; padding: 26px 20px 60px; }
 .card.narrow { max-width: 420px; }
 .card h2 { margin-top: 0; }
 
+.board-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
 .board { width: 100%; border-collapse: collapse; }
 .board th, .board td { padding: 10px 12px; text-align: left; border-bottom: 1px solid var(--line); }
 .board th.num, .board td.num { text-align: right; }
 .board .rank { color: var(--muted); width: 2.5em; }
 .board .name { font-weight: 700; }
+.board .name a { color: inherit; }
+.board .name a:hover { color: var(--accent-2); text-decoration: underline; }
 .board .strong { font-weight: 800; font-size: 1.05em; }
 .board .avail { color: var(--accent); }
 .board .muted { color: var(--muted); }
 .board tbody tr:hover { background: rgba(106,166,255,.06); }
+/* "Still / Available" header: "Still" centered on the line above "Available". */
+.board th.availhead { text-align: center; white-space: nowrap; }
+.board th.availhead .stack2 { display: inline-flex; flex-direction: column;
+  align-items: center; line-height: 1.08; }
+.board th.availhead .top { font-size: .82em; font-weight: 600; }
+
+@media (max-width: 560px) {
+  .board th, .board td { padding: 8px 8px; }
+}
 
 .legend { margin: 0; padding-left: 1.1em; }
 .legend li { margin: 4px 0; }
@@ -167,6 +202,30 @@ h2.sec { margin: 28px 0 12px; border-bottom: 1px solid var(--line); padding-bott
 .kteam.win .ktn { font-weight: 800; }
 .kpick .star { margin-left: auto; }
 .ktbd { color: var(--muted); font-size: .75rem; font-style: italic; padding-left: 2px; }
+
+/* a knockout game that has kicked off: dimmed, non-interactive, with a "played" tag. */
+.kmatch.locked .kteam { opacity: .82; }
+.kmatch.locked .kpick { cursor: default; }
+.kmatch.locked .kpick input { cursor: default; }
+.klock { position: absolute; top: -8px; right: 4px; z-index: 1; font-size: .6rem;
+         font-weight: 700; letter-spacing: .02em; text-transform: uppercase;
+         color: var(--muted); background: #0e1426; border: 1px solid var(--line);
+         border-radius: 999px; padding: 1px 6px; white-space: nowrap; }
+/* champion banner at the top of the scoreboard, once the tournament is over. */
+.champ-banner { display: flex; align-items: center; gap: 16px; margin-bottom: 18px;
+  padding: 18px 22px; border-radius: var(--radius); color: #2a1d00;
+  background: linear-gradient(100deg, #ffe08a 0%, #ffcf4d 45%, #f7b733 100%);
+  border: 1px solid #f7b733; box-shadow: 0 8px 30px rgba(247,183,51,.25); }
+.champ-banner .trophy { font-size: 2.6rem; line-height: 1; filter: drop-shadow(0 2px 2px rgba(0,0,0,.18)); }
+.champ-banner .champ-text { display: flex; flex-direction: column; gap: 3px; }
+.champ-banner b { font-size: 1.25rem; font-weight: 800; letter-spacing: .2px; }
+.champ-banner .champ-sub { font-size: .85rem; font-weight: 600; color: #5a4300; }
+
+/* official FIFA match number, so the bracket mirrors the published draw. */
+.kmno { position: absolute; top: -8px; left: 4px; z-index: 1; font-size: .58rem;
+        font-weight: 700; letter-spacing: .02em; color: var(--muted);
+        background: #0e1426; border: 1px solid var(--line); border-radius: 999px;
+        padding: 1px 6px; white-space: nowrap; }
 
 .ko-center { display: flex; flex-direction: column; min-width: 168px; }
 .ko-center .kcol-body { justify-content: center; }

@@ -1,6 +1,15 @@
 {% extends "base.html" %}
 {% block title %}{{ pool.name }}{% endblock %}
 {% block body %}
+{% if league_champion %}
+<section class="champ-banner">
+  <span class="trophy">🏆</span>
+  <div class="champ-text">
+    <b>Congratulations {{ league_champion.bracket_name }}{% if league_champion.owner_name %} ({{ league_champion.owner_name }}){% endif %} — you're the Champion!</b>
+    <span class="champ-sub">Winner of {{ pool.name }} with {{ league_champion.total }} points{% if wc_winner_name %} · {{ wc_winner_name }} lifted the World Cup{% endif %}</span>
+  </div>
+</section>
+{% endif %}
 <section class="hero">
   <h1>{{ pool.name }}</h1>
   <p class="sub">Predict the group stage and fill your knockout bracket. Points double each
@@ -10,15 +19,16 @@
 <section class="card">
   <h2>Leaderboard</h2>
   {% if board %}
+  <div class="board-wrap">
   <table class="board">
     <thead>
-      <tr><th>#</th><th>Bracket</th><th class="num">Points</th><th class="num">Still available</th><th class="num">Ceiling</th></tr>
+      <tr><th>#</th><th>Bracket</th><th class="num">Points</th><th class="num availhead"><span class="stack2"><span class="top">Still</span><span>Available</span></span></th><th class="num">Ceiling</th></tr>
     </thead>
     <tbody>
     {% for s in board %}
       <tr>
         <td class="rank">{{ loop.index }}</td>
-        <td class="name">{{ s.bracket_name }}{% if s.owner_name %} <span class="owner">({{ s.owner_name }})</span>{% endif %}</td>
+        <td class="name">{% if session %}<a href="/bracket/{{ s.member_id }}">{{ s.bracket_name }}</a>{% else %}{{ s.bracket_name }}{% endif %}{% if s.owner_name %} <span class="owner">({{ s.owner_name }})</span>{% endif %}</td>
         <td class="num strong">{{ s.total }}</td>
         <td class="num avail">+{{ s.available }}</td>
         <td class="num muted">{{ s.ceiling }}</td>
@@ -26,6 +36,7 @@
     {% endfor %}
     </tbody>
   </table>
+  </div>
   {% else %}
   <p class="empty">No brackets yet. <a href="/join">Be the first to join →</a></p>
   {% endif %}
