@@ -118,7 +118,14 @@ def real_knockout_status(matches) -> dict[int, dict]:
         fx = fixtures[bracket_structure.round_of(no)].get(frozenset((h, a))) if (h and a) else None
         if not fx:
             return
-        out[no] = {"status": fx.get("status"), "winner_id": fx.get("winner_team_id")}
+        # Per-team scores for the real fixture, so the bracket can show the result
+        # next to each team (keyed by team id, since slot home/away order may differ).
+        scores = {}
+        if fx.get("home_team_id") is not None and fx.get("home_score") is not None:
+            scores[fx["home_team_id"]] = fx["home_score"]
+        if fx.get("away_team_id") is not None and fx.get("away_score") is not None:
+            scores[fx["away_team_id"]] = fx["away_score"]
+        out[no] = {"status": fx.get("status"), "winner_id": fx.get("winner_team_id"), "scores": scores}
         if fx.get("status") == FINISHED and fx.get("winner_team_id"):
             real_winner[no] = fx["winner_team_id"]
 

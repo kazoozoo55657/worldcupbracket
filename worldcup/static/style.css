@@ -201,9 +201,24 @@ h2.sec { margin: 28px 0 12px; border-bottom: 1px solid var(--line); padding-bott
 .stage-panel h2.sec:first-child { margin-top: 0; }
 
 /* two-sided knockout bracket */
-.bracket-scroll { overflow-x: auto; padding: 6px 0 14px; }
-.ko { --kgap: 20px; display: flex; align-items: stretch; gap: var(--kgap); min-width: max-content; }
-.ko-side { display: flex; gap: var(--kgap); }
+.scroll-hint { color: var(--muted); font-size: .82rem; text-align: right; margin: 0 4px 6px; }
+.bracket-scroll {
+  overflow-x: auto; padding: 6px 0 14px;
+  /* Lea Verou scroll shadows: a soft shadow appears on whichever edge has more
+     bracket to scroll to, so it's obvious the right half is off-screen. */
+  background:
+    linear-gradient(to right, var(--bg), rgba(11,16,32,0)) 0 0 / 40px 100% no-repeat,
+    linear-gradient(to left, var(--bg), rgba(11,16,32,0)) 100% 0 / 40px 100% no-repeat,
+    radial-gradient(farthest-side at 0 50%, rgba(0,0,0,.5), rgba(0,0,0,0)) 0 0 / 16px 100% no-repeat,
+    radial-gradient(farthest-side at 100% 50%, rgba(0,0,0,.5), rgba(0,0,0,0)) 100% 0 / 16px 100% no-repeat;
+  background-attachment: local, local, scroll, scroll;
+}
+.ko { --kgap: 30px; --khalf: 15px; display: flex; align-items: stretch; gap: var(--kgap); min-width: max-content; }
+.ko-side { display: flex; flex-direction: column; }
+.ko-cols { display: flex; gap: var(--kgap); flex: 1; }
+.ko-half-label { min-height: 1.4em; margin-bottom: 6px; text-align: center;
+  font-weight: 800; text-transform: uppercase; letter-spacing: .8px;
+  font-size: .8rem; color: var(--ink); }
 .kcol { display: flex; flex-direction: column; min-width: 152px; }
 .kcol-head { text-align: center; font-weight: 800; color: var(--accent); text-transform: uppercase;
              letter-spacing: .5px; font-size: .72rem; height: 14px; margin-bottom: 8px; }
@@ -213,23 +228,25 @@ h2.sec { margin: 28px 0 12px; border-bottom: 1px solid var(--line); padding-bott
          padding: 4px 7px; min-height: 30px; }
 .kmatch > .kteam:first-child { border-radius: 8px 8px 0 0; }
 .kmatch > .kteam:last-child { border-radius: 0 0 8px 8px; border-top: 0; }
-.kteam.win { background: rgba(54,211,153,.18); border-color: var(--accent); }
+/* "picked to advance" reads as a neutral (non-green) highlight; the ONLY green is
+   the ✓ that appears once a pick is confirmed correct by the real result. */
+.kteam.picked { background: rgba(106,166,255,.10); }
+.kteam.picked .ktn { font-weight: 800; }
 .kpick { display: flex; align-items: center; gap: 6px; cursor: pointer; width: 100%; }
-.kpick input { accent-color: var(--accent); flex-shrink: 0; }
+.kpick input { accent-color: var(--accent-2); flex-shrink: 0; }
 .ktn { font-size: .85rem; }
-.kteam.win .ktn { font-weight: 800; }
-.kpick .star { margin-left: auto; }
+.kcheck { color: var(--accent); font-weight: 800; font-size: .8rem; flex-shrink: 0; }
+.kscore { margin-left: auto; padding-left: 8px; font-weight: 700; font-size: .82rem;
+  color: var(--ink); font-variant-numeric: tabular-nums; }
 .ktbd { color: var(--muted); font-size: .75rem; font-style: italic; padding-left: 2px; }
 
 /* wrong prediction: the team that REALLY advanced shown above the struck-out pick */
 .kteam.wrong { flex-direction: column; align-items: stretch; gap: 2px; padding-top: 4px; padding-bottom: 4px; }
 .kactual { display: flex; align-items: center; gap: 6px; }
 .kactual .ktn { font-size: .85rem; font-weight: 800; color: var(--ink); }
-.kactual .kcheck { margin-left: auto; color: var(--accent); font-weight: 800; font-size: .8rem; }
 .kteam.wrong .kpick { opacity: .9; }
 .kteam.wrong .kpick .ktn { text-decoration: line-through; color: var(--bad); font-weight: 400; }
 .kteam.wrong .kpick .flag { opacity: .45; filter: grayscale(1); }
-.kteam.wrong .kpick .star { opacity: .45; }
 
 /* a knockout game that has kicked off: dimmed, non-interactive, with a "played" tag. */
 .kmatch.locked .kteam { opacity: .82; }
@@ -259,17 +276,40 @@ h2.sec { margin: 28px 0 12px; border-bottom: 1px solid var(--line); padding-bott
 .ko-center .kcol-body { justify-content: center; }
 .ko-center .kmatch { flex: 0 0 auto; }
 
-/* connector elbows: horizontal stub from every match toward the centre, plus a
-   vertical line joining each pair at the parent column's edge. */
-.ko-side .kmatch::after { content: ''; position: absolute; top: 50%; width: var(--kgap);
-                          height: 2px; background: var(--line); }
-.ko-side.left .kmatch::after { left: 100%; }
-.ko-side.right .kmatch::after { right: 100%; }
-.ko-side.left .kcol:not(:last-child) .kmatch:nth-child(odd)::before,
-.ko-side.right .kcol:not(:first-child) .kmatch:nth-child(odd)::before {
+/* Connectors (ESPN-style, meeting at the parent match's CENTRE):
+   1. each feeder match draws a half-gap stub from its centre toward the next round;
+   2. the top match of each pair (.kconn::before) draws the vertical line joining the
+      pair, sitting in the middle of the gap;
+   3. (.kconn::after) draws a final stub from that vertical line's midpoint straight
+      into the centre of the parent match it feeds.
+   The innermost column (the two semis) instead runs a full-gap stub across to the
+   centre Final. */
+/* connector span is re-emitted by bracket.js on render so the join survives */
+.kconn { position: absolute; inset: 0; pointer-events: none; }
+/* 1. half-gap stub from each feeder match's centre */
+.ko-side.left .kcol:not(:last-child) .kmatch::after,
+.ko-side.right .kcol:not(:first-child) .kmatch::after {
+  content: ''; position: absolute; top: 50%; width: var(--khalf); height: 2px; background: var(--line); }
+.ko-side.left .kcol:not(:last-child) .kmatch::after { left: 100%; }
+.ko-side.right .kcol:not(:first-child) .kmatch::after { right: 100%; }
+/* 2. vertical line joining each pair, in the middle of the gap */
+.ko-side.left .kcol:not(:last-child) .kmatch:nth-child(odd) .kconn::before,
+.ko-side.right .kcol:not(:first-child) .kmatch:nth-child(odd) .kconn::before {
   content: ''; position: absolute; top: 50%; height: 100%; width: 2px; background: var(--line); }
-.ko-side.left .kcol:not(:last-child) .kmatch:nth-child(odd)::before { left: calc(100% + var(--kgap)); }
-.ko-side.right .kcol:not(:first-child) .kmatch:nth-child(odd)::before { right: calc(100% + var(--kgap)); }
+.ko-side.left .kcol:not(:last-child) .kmatch:nth-child(odd) .kconn::before { left: calc(100% + var(--khalf)); }
+.ko-side.right .kcol:not(:first-child) .kmatch:nth-child(odd) .kconn::before { right: calc(100% + var(--khalf)); }
+/* 3. stub from the pair midpoint into the parent match's centre */
+.ko-side.left .kcol:not(:last-child) .kmatch:nth-child(odd) .kconn::after,
+.ko-side.right .kcol:not(:first-child) .kmatch:nth-child(odd) .kconn::after {
+  content: ''; position: absolute; top: 100%; width: var(--khalf); height: 2px; background: var(--line); }
+.ko-side.left .kcol:not(:last-child) .kmatch:nth-child(odd) .kconn::after { left: calc(100% + var(--khalf)); }
+.ko-side.right .kcol:not(:first-child) .kmatch:nth-child(odd) .kconn::after { right: calc(100% + var(--khalf)); }
+/* innermost column (the semifinals) → full-gap stub across to the centre Final */
+.ko-side.left .kcol:last-child .kmatch::after,
+.ko-side.right .kcol:first-child .kmatch::after {
+  content: ''; position: absolute; top: 50%; width: var(--kgap); height: 2px; background: var(--line); }
+.ko-side.left .kcol:last-child .kmatch::after { left: 100%; }
+.ko-side.right .kcol:first-child .kmatch::after { right: 100%; }
 .champ { color: #ffcf4d; font-weight: 800; display: inline-flex; align-items: center; gap: 5px; }
 .champ .flag { width: 24px; height: 18px; }
 

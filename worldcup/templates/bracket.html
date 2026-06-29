@@ -6,15 +6,17 @@
 
 {% macro kteam(m, side) %}
   {% set t = side.team %}
-  <div class="kteam{{ ' win' if t and m.winner_id == t.id and not side.actual }}{{ ' wrong' if side.actual }}">
+  {% set picked = t and m.winner_id == t.id and not side.actual %}
+  {% set correct = picked and m.real_winner_id == t.id %}
+  <div class="kteam{{ ' picked' if picked }}{{ ' correct' if correct }}{{ ' wrong' if side.actual }}">
     {% if t %}
       {% if side.actual %}
-        <span class="kactual">{{ flag(side.actual) }}<span class="ktn">{{ side.actual.name }}</span>{{ star(side.actual.medal) }}<span class="kcheck" title="Actually advanced">✓</span></span>
+        <span class="kactual">{{ flag(side.actual) }}<span class="ktn">{{ side.actual.name }}</span><span class="kcheck" title="Actually advanced">✓</span>{% if side.actual_score is not none %}<span class="kscore">{{ side.actual_score }}</span>{% endif %}</span>
       {% endif %}
       <label class="kpick">
         <input type="radio" name="win_{{ m.no }}" value="{{ t.id }}"
           {{ 'checked' if m.winner_id == t.id }} {{ 'disabled' if not m.can_pick }}>
-        {{ flag(t) }}<span class="ktn">{{ t.name }}</span>{{ star(t.medal) }}
+        {{ flag(t) }}<span class="ktn">{{ t.name }}</span>{% if correct %}<span class="kcheck" title="Correct pick">✓</span>{% endif %}{% if side.score is not none %}<span class="kscore">{{ side.score }}</span>{% endif %}
       </label>
     {% else %}
       <span class="ktbd">{{ side.label }}</span>
@@ -27,6 +29,7 @@
     <span class="kmno" title="Official match {{ m.no }}">M{{ m.no }}</span>
     {{ kteam(m, m.home) }}
     {{ kteam(m, m.away) }}
+    <span class="kconn" aria-hidden="true"></span>
     {% if m.locked %}<span class="klock" title="This game has been played — picks are locked">🔒 played</span>{% endif %}
   </div>
 {% endmacro %}
@@ -107,17 +110,21 @@
     <p class="muted">The bracket opens as group results come in — the real Round of 32 teams
        fill in automatically, then you pick winners from there.</p>
   {% endif %}
+  <p class="scroll-hint" aria-hidden="true">Scroll sideways to see both halves of the bracket →</p>
   <div class="bracket-scroll">
     <div class="ko">
       <div class="ko-side left">
-        {% for col in ko_left %}{{ kcolumn(col) }}{% endfor %}
+        <div class="ko-half-label">Left Half</div>
+        <div class="ko-cols">{% for col in ko_left %}{{ kcolumn(col) }}{% endfor %}</div>
       </div>
       <div class="ko-center">
+        <div class="ko-half-label" aria-hidden="true"></div>
         <div class="kcol-head">Final</div>
         <div class="kcol-body">{{ kmatch(ko_final) }}</div>
       </div>
       <div class="ko-side right">
-        {% for col in ko_right %}{{ kcolumn(col) }}{% endfor %}
+        <div class="ko-half-label">Right Half</div>
+        <div class="ko-cols">{% for col in ko_right %}{{ kcolumn(col) }}{% endfor %}</div>
       </div>
     </div>
   </div>
