@@ -7,15 +7,31 @@
 
 <section class="card">
   <h2>Brackets ({{ members|length }})</h2>
+  {% if reset_pin %}
+  <p class="notice ok">New PIN for <b>{{ reset_member }}</b>: <span class="pin-show">{{ reset_pin }}</span>
+     — share it with them now; it isn't shown again and can't be looked up later.</p>
+  {% elif reset_error %}
+  <p class="notice err">Couldn't reset PIN{% if reset_member %} for {{ reset_member }}{% endif %}: {{ reset_error }}</p>
+  {% endif %}
+  <p class="sub">PINs are stored hashed and can't be viewed. If someone forgets theirs,
+     reset it here and tell them the new one.</p>
   {% if members %}
   <table class="board">
-    <thead><tr><th>Bracket</th><th>Joined</th><th>Last login</th><th></th></tr></thead>
+    <thead><tr><th>Bracket</th><th>Joined</th><th>Last login</th><th>Reset PIN</th><th></th></tr></thead>
     <tbody>
     {% for m in members %}
       <tr>
         <td class="name">{{ m.bracket_name }}{% if m.owner_name %} <span class="owner">({{ m.owner_name }})</span>{% endif %}</td>
         <td class="muted small">{{ m.joined_at[:10] }}</td>
         <td class="muted small">{{ (m.last_login_at or '—')[:10] }}</td>
+        <td>
+          <form method="post" action="/admin/member/{{ m.id }}/reset-pin" class="inline">
+            <input type="hidden" name="csrf_token" value="{{ csrf }}">
+            <input type="text" name="pin" inputmode="numeric" maxlength="6" class="pin-in"
+                   placeholder="auto" aria-label="New PIN for {{ m.bracket_name }} (blank = auto)">
+            <button type="submit">Reset</button>
+          </form>
+        </td>
         <td>
           <form method="post" action="/admin/member/{{ m.id }}/delete" class="inline"
                 onsubmit="return confirm('Delete bracket “{{ m.bracket_name }}” and all its picks? This cannot be undone.');">

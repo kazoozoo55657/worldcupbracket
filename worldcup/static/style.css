@@ -313,6 +313,15 @@ h2.sec { margin: 28px 0 12px; border-bottom: 1px solid var(--line); padding-bott
 .champ { color: #ffcf4d; font-weight: 800; display: inline-flex; align-items: center; gap: 5px; }
 .champ .flag { width: 24px; height: 18px; }
 
+/* Admin: PIN reset */
+.notice { border-radius: 8px; padding: 10px 12px; margin: 0 0 10px; font-size: .92rem; line-height: 1.4; }
+.notice.ok { background: #11331f; border: 1px solid #1f7a45; color: #c7f0d6; }
+.notice.err { background: #3a1313; border: 1px solid #8a2a2a; color: #f3c9c9; }
+.pin-show { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 1.2rem;
+            font-weight: 800; letter-spacing: 2px; padding: 1px 8px; border-radius: 6px;
+            background: rgba(255,255,255,.12); }
+.pin-in { width: 4.5em; font-family: ui-monospace, monospace; letter-spacing: 1px; }
+
 .savebar { position: sticky; bottom: 0; margin-top: 22px; padding: 14px 0;
            background: linear-gradient(0deg, var(--bg) 70%, transparent); text-align: center; }
 .savebar .primary { font-size: 1.05rem; padding: 12px 28px; }

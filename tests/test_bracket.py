@@ -172,6 +172,47 @@ def test_owner_name_register_rename_and_delete():
         cfg.DB_PATH = saved
 
 
+def test_admin_reset_pin():
+    """Admin can set a new PIN for a member who forgot theirs: the old PIN stops
+    working, the new one logs in, and any lockout is cleared."""
+    import tempfile
+    import pytest
+    from worldcup.config import config as cfg
+    from worldcup import db as dbm, auth, repo
+
+    saved = cfg.DB_PATH
+    cfg.DB_PATH = tempfile.mktemp(suffix=".db")
+    try:
+        dbm.init_db()
+        conn = dbm.connect()
+        m = auth.register(conn, "Forgot FC", "1234", "Pat")
+        # Simulate a prior lockout from too many bad attempts.
+        conn.execute("UPDATE member SET failed_logins = 9, lockout_until = '2999-01-01T00:00:00Z' "
+                     "WHERE id = ?", (m["id"],))
+        conn.commit()
+
+        returned = auth.reset_pin(conn, m["id"], "5678")
+        assert returned == "5678"
+        # reset clears the lockout immediately
+        row = repo.get_member(conn, m["id"])
+        assert row["failed_logins"] == 0 and row["lockout_until"] is None
+        # old PIN rejected, new PIN accepted
+        with pytest.raises(ValueError):
+            auth.login(conn, "Forgot FC", "1234")
+        assert auth.login(conn, "Forgot FC", "5678")["id"] == m["id"]
+
+        # auto-generated PINs are valid 4-digit strings
+        gen = auth.generate_pin()
+        assert gen.isdigit() and len(gen) == 4 and auth.valid_pin(gen)
+
+        # bad PIN is rejected
+        with pytest.raises(ValueError):
+            auth.reset_pin(conn, m["id"], "12")
+        conn.close()
+    finally:
+        cfg.DB_PATH = saved
+
+
 def test_group_locks_only_when_complete():
     """A group locks once all its matches are FINISHED; knockout never locks here."""
     from worldcup.locks import compute_locks

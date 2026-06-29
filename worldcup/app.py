@@ -467,8 +467,7 @@ def admin_login_submit(request: Request, pin: str = Form(""), csrf_token: str = 
     return resp
 
 
-@app.get("/admin", response_class=HTMLResponse)
-def admin_page(request: Request, _: dict = Depends(require_admin)):
+def _render_admin(request: Request, status_code: int = 200, **extra):
     with db() as conn:
         teams = repo.teams_by_id(conn)
         members = repo.all_members(conn)
@@ -478,8 +477,33 @@ def admin_page(request: Request, _: dict = Depends(require_admin)):
         )
     return templates.TemplateResponse(
         "admin.html", ctx(request, matches=matches, teams=teams, members=members,
-                          round_order=["GROUP"] + KNOCKOUT_ROUNDS)
+                          round_order=["GROUP"] + KNOCKOUT_ROUNDS, **extra),
+        status_code=status_code,
     )
+
+
+@app.get("/admin", response_class=HTMLResponse)
+def admin_page(request: Request, _: dict = Depends(require_admin)):
+    return _render_admin(request)
+
+
+@app.post("/admin/member/{member_id}/reset-pin", response_class=HTMLResponse)
+def admin_reset_pin(request: Request, member_id: int, pin: str = Form(""),
+                    csrf_token: str = Form(""), _: dict = Depends(require_admin)):
+    check_csrf(request, csrf_token)
+    pin = (pin or "").strip()
+    with db() as conn:
+        member = repo.get_member(conn, member_id)
+        if not member or member.get("is_admin"):
+            raise HTTPException(status_code=404, detail="Bracket not found.")
+        new_pin = pin or auth.generate_pin()
+        try:
+            auth.reset_pin(conn, member_id, new_pin)
+        except ValueError as e:
+            return _render_admin(request, status_code=400, reset_error=str(e),
+                                 reset_member=member["bracket_name"])
+    # Re-render so the admin can read off the new PIN (shown once, never stored in clear).
+    return _render_admin(request, reset_pin=new_pin, reset_member=member["bracket_name"])
 
 
 @app.post("/admin/member/{member_id}/delete")

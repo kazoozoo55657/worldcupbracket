@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import hmac
 import re
+import secrets
 
 from argon2 import PasswordHasher
 from argon2.exceptions import VerifyMismatchError
@@ -82,6 +83,30 @@ def register(conn, name: str, pin: str, owner_name: str = "") -> dict:
     )
     conn.commit()
     return {"id": cur.lastrowid, "bracket_name": name, "is_admin": 0}
+
+
+def generate_pin() -> str:
+    """A random 4-digit PIN (leading zeros allowed), for admin-driven resets."""
+    return f"{secrets.randbelow(10000):04d}"
+
+
+def reset_pin(conn, member_id: int, pin: str) -> str:
+    """Admin sets a new PIN for a member (e.g. they forgot theirs). Validates,
+    hashes, and clears any failed-login lockout. Returns the PIN that was set so
+    the admin can relay it. Raises ValueError on bad PIN or unknown/admin member."""
+    if not valid_pin(pin):
+        raise ValueError("PIN must be 4–6 digits.")
+    row = conn.execute("SELECT is_admin FROM member WHERE id = ?", (member_id,)).fetchone()
+    if not row:
+        raise ValueError("No such bracket.")
+    if row["is_admin"]:
+        raise ValueError("Use the pool config to change the admin PIN.")
+    conn.execute(
+        "UPDATE member SET pin_hash = ?, failed_logins = 0, lockout_until = NULL WHERE id = ?",
+        (hash_pin(pin), member_id),
+    )
+    conn.commit()
+    return pin
 
 
 def update_account(conn, member_id: int, name: str, owner_name: str) -> None:
