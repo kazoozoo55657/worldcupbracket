@@ -54,7 +54,10 @@
     for (var i = 0; i < fedNos.length; i++) {
       no = fedNos[i];
       var f = DATA.feeds[no];
-      var p = [winners[f[0]] || null, winners[f[1]] || null];
+      // Slot = member's predicted winner of the feeding game, or — if they never
+      // picked it and it's already decided — the real winner, so later rounds stay
+      // pickable after a missed early game. Mirrors bracket_structure.resolve.
+      var p = [winners[f[0]] || REAL[f[0]] || null, winners[f[1]] || REAL[f[1]] || null];
       participants[no] = p;
       winners[no] = chooseWinner(no, p);
     }

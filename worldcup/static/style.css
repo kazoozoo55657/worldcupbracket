@@ -319,6 +319,7 @@ h2.sec { margin: 28px 0 12px; border-bottom: 1px solid var(--line); padding-bott
 .champ { color: #ffcf4d; font-weight: 800; display: inline-flex; align-items: center; gap: 5px; }
 .champ .flag { width: 24px; height: 18px; }
 
+/* cache-buster bump: bracket.js autofills the real winner of a missed game */
 /* Admin: PIN reset */
 .notice { border-radius: 8px; padding: 10px 12px; margin: 0 0 10px; font-size: .92rem; line-height: 1.4; }
 .notice.ok { background: #11331f; border: 1px solid #1f7a45; color: #c7f0d6; }

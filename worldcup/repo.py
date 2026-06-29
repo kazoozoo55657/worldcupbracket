@@ -5,7 +5,7 @@ import sqlite3
 
 from . import bracket_structure
 from .config import KNOCKOUT_ROUNDS, LAYER_BY_ROUND, GROUP_QUALIFIERS_PER_GROUP
-from .scoring import TournamentState, leaderboard as _leaderboard, MemberScore
+from .scoring import TournamentState, leaderboard as _leaderboard, MemberScore, real_knockout_status
 
 
 def all_matches(conn) -> list[dict]:
@@ -125,11 +125,20 @@ def actual_r32_fillers(conn):
     return agw, agr, aslot
 
 
+def real_knockout_winners(conn) -> dict[int, int]:
+    """{match_no: team_id} for every knockout game that has a real, decided winner."""
+    ko = real_knockout_status(all_matches(conn))
+    return {no: st["winner_id"] for no, st in ko.items() if st.get("winner_id")}
+
+
 def resolve_member(conn, member_id: int):
-    """(participants, winners): the REAL R32 field + this member's winner predictions."""
+    """(participants, winners): the REAL R32 field + this member's winner predictions.
+
+    Slots fed by a game the member never picked fall back to the game's real winner
+    (once decided), so later rounds stay pickable after a missed early game."""
     gw, gr, slot = actual_r32_fillers(conn)
     rounds = member_adv_picks(conn, member_id)
-    return bracket_structure.resolve(gw, gr, slot, rounds)
+    return bracket_structure.resolve(gw, gr, slot, rounds, real_knockout_winners(conn))
 
 
 def set_group_pick(conn, member_id, grp, winner_id, runner_id, locks):

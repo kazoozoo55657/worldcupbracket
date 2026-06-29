@@ -97,7 +97,7 @@ def _pick_winner(home, away, winner_set):
 
 
 def resolve(group_winner: dict, group_runner: dict, slot_pick: dict,
-            round_winners: dict) -> tuple[dict, dict]:
+            round_winners: dict, real_winners: dict | None = None) -> tuple[dict, dict]:
     """Compute predicted participants + winners for every knockout match.
 
     Inputs are a member's picks:
@@ -105,11 +105,18 @@ def resolve(group_winner: dict, group_runner: dict, slot_pick: dict,
       group_runner: {group_code: team_id}   (predicted 2nd of each group)
       slot_pick:    {match_no: team_id}      (predicted team for a 3rd-place slot)
       round_winners:{round_code: set(team_id)} (predicted match winners per round)
+      real_winners: {match_no: team_id}      (the team that REALLY won a decided game)
 
     Returns (participants, winners):
       participants: {match_no: (home_team_id|None, away_team_id|None)}
       winners:      {match_no: team_id|None}
+
+    A fed match's slot is filled by the member's predicted winner of the feeding
+    game; if they made no pick AND that game is already decided, it falls back to the
+    real winner of the matchup (``real_winners``), so a member who missed an early
+    game can still pick the later rounds.
     """
+    real_winners = real_winners or {}
     participants: dict[int, tuple] = {}
     winners: dict[int, int | None] = {}
 
@@ -123,6 +130,9 @@ def resolve(group_winner: dict, group_runner: dict, slot_pick: dict,
             return slot_pick.get(match_no)
         return None
 
+    def feed_team(feed_no):
+        return winners.get(feed_no) or real_winners.get(feed_no)
+
     for m in R32_MATCHES:
         h = side_team(m["home"], m["no"])
         a = side_team(m["away"], m["no"])
@@ -130,8 +140,8 @@ def resolve(group_winner: dict, group_runner: dict, slot_pick: dict,
         winners[m["no"]] = _pick_winner(h, a, round_winners.get("R32", set()))
 
     for m in FED_MATCHES:
-        h = winners.get(m["feeds"][0])
-        a = winners.get(m["feeds"][1])
+        h = feed_team(m["feeds"][0])
+        a = feed_team(m["feeds"][1])
         participants[m["no"]] = (h, a)
         winners[m["no"]] = _pick_winner(h, a, round_winners.get(round_of(m["no"]), set()))
 
@@ -139,13 +149,18 @@ def resolve(group_winner: dict, group_runner: dict, slot_pick: dict,
 
 
 def build_from_match_choices(group_winner: dict, group_runner: dict, slot_pick: dict,
-                             match_choice: dict) -> tuple[dict, dict, dict]:
+                             match_choice: dict, real_winners: dict | None = None
+                             ) -> tuple[dict, dict, dict]:
     """Turn raw per-match winner choices into clean, consistent round-winner sets.
 
     A submitted winner counts only if it is actually one of that match's two
     predicted participants (so changing an upstream pick auto-invalidates stale
-    downstream picks). Returns (round_winners, participants, winners).
+    downstream picks). When a feeding game has no pick but is already decided, its
+    slot falls back to the real winner (``real_winners``) — mirroring ``resolve`` —
+    so a later-round pick made after missing an early game still validates.
+    Returns (round_winners, participants, winners).
     """
+    real_winners = real_winners or {}
     participants: dict[int, tuple] = {}
     winners: dict[int, int | None] = {}
 
@@ -156,6 +171,9 @@ def build_from_match_choices(group_winner: dict, group_runner: dict, slot_pick: 
         if kind == "R":
             return group_runner.get(val)
         return slot_pick.get(match_no)
+
+    def feed_team(feed_no):
+        return winners.get(feed_no) or real_winners.get(feed_no)
 
     def choose(no, h, a):
         w = match_choice.get(no)
@@ -168,8 +186,8 @@ def build_from_match_choices(group_winner: dict, group_runner: dict, slot_pick: 
         winners[m["no"]] = choose(m["no"], h, a)
 
     for m in FED_MATCHES:
-        h = winners.get(m["feeds"][0])
-        a = winners.get(m["feeds"][1])
+        h = feed_team(m["feeds"][0])
+        a = feed_team(m["feeds"][1])
         participants[m["no"]] = (h, a)
         winners[m["no"]] = choose(m["no"], h, a)
 

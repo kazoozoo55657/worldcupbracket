@@ -434,13 +434,15 @@ async def save_bracket(request: Request, member: dict = Depends(require_member))
         # everyone: keep the member's existing pick and ignore any submitted change,
         # so completed games can't be re-picked no matter who they predicted.
         gw, gr, slots = repo.actual_r32_fillers(conn)
+        real_winners = {no: st["winner_id"] for no, st in ko_status.items() if st.get("winner_id")}
         match_choice = {}
         for rc, mlist in bracket_structure.ROUND_MATCHES.items():
             for m in mlist:
                 no = m["no"]
                 locked = ko_status.get(no, {}).get("status") in STARTED_STATUSES
                 match_choice[no] = existing_winners.get(no) if locked else _int(form.get(f"win_{no}"))
-        round_winners, _, _ = bracket_structure.build_from_match_choices(gw, gr, slots, match_choice)
+        round_winners, _, _ = bracket_structure.build_from_match_choices(
+            gw, gr, slots, match_choice, real_winners)
         repo.set_round_winners(conn, member["id"], round_winners)
     return RedirectResponse("/bracket", status_code=303)
 

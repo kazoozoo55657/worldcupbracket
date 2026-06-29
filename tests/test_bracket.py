@@ -60,6 +60,36 @@ def test_build_drops_stale_downstream_winner():
     assert "R16" not in rw or 999 not in rw.get("R16", set())
 
 
+def test_resolve_autofills_real_winner_when_no_pick():
+    """A member who never picked a feeding game still gets the real winner in the
+    next round (once decided), so later rounds remain pickable."""
+    gw = {"F": 100, "C": 200}
+    gr = {"A": 1, "B": 2, "C": 201, "F": 101}
+    # No R32 winner picks at all, but matches 73 & 75 are decided in reality.
+    real = {73: 2, 75: 201}
+    parts, wins = bs.resolve(gw, gr, {}, {}, real)
+    assert wins[73] is None and wins[75] is None          # member picked nothing
+    assert parts[90] == (2, 201)                          # R16 slot autofilled from real winners
+    # Without the real-winner fallback the R16 slot would be empty (old behaviour).
+    parts_old, _ = bs.resolve(gw, gr, {}, {})
+    assert parts_old[90] == (None, None)
+
+
+def test_build_lets_later_pick_through_after_missed_game():
+    """After missing R32 games (no choice), a member can pick the R16 winner: the
+    submitted pick validates against the autofilled real participants and is kept,
+    while the missed R32 round earns no winner pick."""
+    gw = {"F": 100, "C": 200}
+    gr = {"A": 1, "B": 2, "C": 201, "F": 101}
+    real = {73: 2, 75: 201}
+    mc = {90: 201}                                        # only the R16 pick; 73/75 missed
+    rw, parts, wins = bs.build_from_match_choices(gw, gr, {}, mc, real)
+    assert wins[73] is None and wins[75] is None
+    assert parts[90] == (2, 201) and wins[90] == 201
+    assert rw.get("R16") == {201}
+    assert "R32" not in rw                                # missed games score nothing
+
+
 def test_third_place_slot_participant():
     gw = {"E": 50}
     parts, wins = bs.resolve(gw, {}, {74: 77}, {})  # match 74 = 1E vs 3rd(...)
