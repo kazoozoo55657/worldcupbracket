@@ -63,6 +63,16 @@
 {% if readonly %}<div id="bform">{% else %}<form method="post" action="/bracket" id="bform">
   <input type="hidden" name="csrf_token" value="{{ csrf }}">{% endif %}
 
+  {# Stage selector: a pure-CSS segmented switch (works without JS, incl. read-only).
+     The checked radio drives which panel is shown and which half is highlighted. #}
+  <input type="radio" name="stagesel" id="stage-group" class="stage-radio" form="no-submit" checked>
+  <input type="radio" name="stagesel" id="stage-ko" class="stage-radio" form="no-submit">
+  <div class="stage-switch" role="tablist" aria-label="Bracket stage">
+    <label for="stage-group" class="stage-opt">Group Stage</label>
+    <label for="stage-ko" class="stage-opt">Knockout</label>
+  </div>
+
+  <section class="stage-panel" id="panel-group">
   <h2 class="sec">Group stage <span class="muted small">· pick the 2 to advance · <span class="star gold">★</span>#1 <span class="star silver">★</span>#2 <span class="star bronze">★</span>#3 by FIFA rank, {{ ranking_date }}</span></h2>
   <div class="groups-grid">
     {% for g in groups %}
@@ -89,7 +99,9 @@
       </div>
     {% endfor %}
   </div>
+  </section>
 
+  <section class="stage-panel" id="panel-ko">
   <h2 class="sec">Knockout bracket <span id="champ-wrap">{% if champion %}· <span class="champ">🏆 {{ flag(champion) }}{{ champion.name }}</span>{% endif %}</span></h2>
   {% if not ko_open %}
     <p class="muted">The bracket opens as group results come in — the real Round of 32 teams
@@ -109,6 +121,7 @@
       </div>
     </div>
   </div>
+  </section>
 
   {% if not readonly %}
   <div class="savebar">
