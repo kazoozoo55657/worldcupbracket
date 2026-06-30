@@ -146,6 +146,15 @@ def sync(conn, raw_matches: list[dict], source: str = "api:football-data") -> di
             winner_id = away_id
         went_pens = 1 if score.get("duration") == "PENALTY_SHOOTOUT" else 0
         status = map_status(m.get("status"))
+        # Fallback: football-data sometimes leaves score.winner null on penalty
+        # shootouts (and occasionally other finished games) even though fullTime
+        # already holds the decisive aggregate. A FINISHED match with a decisive
+        # fullTime must have a winner, so derive it from the score — otherwise the
+        # advancement scoring credits nobody and the next round can't resolve.
+        if winner_id is None and status == "FINISHED" and home_id and away_id:
+            fh, fa = full.get("home"), full.get("away")
+            if fh is not None and fa is not None and fh != fa:
+                winner_id = home_id if fh > fa else away_id
         grp = strip_group(m.get("group")) if rnd == "GROUP" else None
         kickoff = m.get("utcDate") or ts
         # normalize to our stored format

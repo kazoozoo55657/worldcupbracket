@@ -31,6 +31,14 @@ RAW = [
      "awayTeam": {"id": 773, "name": "France", "tla": "FRA"},
      "score": {"winner": "AWAY_TEAM", "duration": "PENALTY_SHOOTOUT",
                "fullTime": {"home": 1, "away": 1}, "penalties": {"home": 3, "away": 4}}},
+    # Knockout shootout where football-data leaves score.winner null (real WC bug):
+    # fullTime is decisive (away wins 5-4 aggregate) so the winner must be derived.
+    {"id": 2003, "utcDate": "2026-06-29T20:30:00Z", "status": "FINISHED",
+     "stage": "LAST_32", "group": None,
+     "homeTeam": {"id": 774, "name": "Germany", "tla": "GER"},
+     "awayTeam": {"id": 775, "name": "Paraguay", "tla": "PAR"},
+     "score": {"winner": None, "duration": "PENALTY_SHOOTOUT",
+               "fullTime": {"home": 4, "away": 5}, "penalties": {"home": 4, "away": 4}}},
     # Not-yet-determined knockout fixture (teams TBD).
     {"id": 2002, "utcDate": "2026-06-29T22:00:00Z", "status": "TIMED",
      "stage": "LAST_32", "group": None,
@@ -56,13 +64,14 @@ def _fresh_conn():
 def test_sync_maps_and_skips():
     conn = _fresh_conn()
     counts = footballdata.sync(conn, RAW)
-    # 7 distinct teams across the modelled matches (third-place adds none new):
-    # Brazil, Serbia, Switzerland, Cameroon (grp A); England, Iran (grp B); France (knockout).
-    assert counts["teams"] == 7
-    # 5 modelled matches (third-place skipped).
-    assert counts["matches"] == 5
+    # 9 distinct teams across the modelled matches (third-place adds none new):
+    # Brazil, Serbia, Switzerland, Cameroon (grp A); England, Iran (grp B);
+    # France, Germany, Paraguay (knockout).
+    assert counts["teams"] == 9
+    # 6 modelled matches (third-place skipped).
+    assert counts["matches"] == 6
     assert conn.execute("SELECT COUNT(*) c FROM match WHERE round='F'").fetchone()["c"] == 0
-    assert conn.execute("SELECT COUNT(*) c FROM match").fetchone()["c"] == 5
+    assert conn.execute("SELECT COUNT(*) c FROM match").fetchone()["c"] == 6
 
     # Group derivation from group-stage matches.
     bra = conn.execute("SELECT grp, code FROM team WHERE ext_id='759'").fetchone()
@@ -80,6 +89,11 @@ def test_sync_maps_and_skips():
     pens = conn.execute("SELECT * FROM match WHERE ext_id='2001'").fetchone()
     fra_id = conn.execute("SELECT id FROM team WHERE ext_id='773'").fetchone()["id"]
     assert pens["went_to_pens"] == 1 and pens["winner_team_id"] == fra_id and pens["round"] == "R32"
+
+    # Shootout with null score.winner: winner derived from decisive fullTime (away/Paraguay).
+    nullwin = conn.execute("SELECT * FROM match WHERE ext_id='2003'").fetchone()
+    par_id = conn.execute("SELECT id FROM team WHERE ext_id='775'").fetchone()["id"]
+    assert nullwin["went_to_pens"] == 1 and nullwin["winner_team_id"] == par_id
 
     # TBD knockout fixture inserted with NULL teams.
     tbd = conn.execute("SELECT * FROM match WHERE ext_id='2002'").fetchone()
