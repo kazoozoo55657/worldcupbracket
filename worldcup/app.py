@@ -458,7 +458,13 @@ def admin_login_form(request: Request):
 def admin_login_submit(request: Request, pin: str = Form(""), csrf_token: str = Form("")):
     check_csrf(request, csrf_token)
     with db() as conn:
-        if not auth.admin_login(conn, pin):
+        try:
+            ok = auth.admin_login(conn, pin)
+        except ValueError as e:  # locked out
+            return templates.TemplateResponse(
+                "admin_login.html", ctx(request, error=str(e)), status_code=429
+            )
+        if not ok:
             return templates.TemplateResponse(
                 "admin_login.html", ctx(request, error="Incorrect admin PIN."), status_code=400
             )

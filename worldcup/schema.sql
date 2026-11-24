@@ -10,7 +10,9 @@ CREATE TABLE IF NOT EXISTS pool (
     name           TEXT NOT NULL,
     join_code      TEXT NOT NULL,            -- shared secret carried in the invite link
     admin_pin_hash TEXT NOT NULL,            -- owner login
-    settings_json  TEXT NOT NULL DEFAULT '{}' -- point values etc. (data, not hardcoded)
+    settings_json  TEXT NOT NULL DEFAULT '{}', -- point values etc. (data, not hardcoded)
+    admin_failed_logins INTEGER NOT NULL DEFAULT 0,
+    admin_lockout_until TEXT
 );
 
 CREATE TABLE IF NOT EXISTS member (

@@ -161,9 +161,28 @@ def login(conn, name: str, pin: str) -> dict:
 
 
 def admin_login(conn, pin: str) -> bool:
-    pool = get_pool(conn)
+    """Verify the admin PIN. Returns False on a wrong PIN; raises ValueError while
+    locked out. Same limits as member logins, tracked on the pool row, so the
+    admin PIN can't be brute-forced (it used to have no limit at all)."""
+    pool = dict(get_pool(conn))
+    until = pool.get("admin_lockout_until")
+    if until and now_utc() < parse_iso(until):
+        raise ValueError("Too many attempts — try again in a few minutes.")
     try:
         _ph.verify(pool["admin_pin_hash"], pin or "")
-        return True
     except VerifyMismatchError:
+        failed = (pool.get("admin_failed_logins") or 0) + 1
+        lockout = None
+        if failed >= config.MAX_FAILED_LOGINS:
+            from datetime import timedelta
+            lockout = iso(now_utc() + timedelta(minutes=config.LOCKOUT_MINUTES))
+            failed = 0
+        conn.execute(
+            "UPDATE pool SET admin_failed_logins = ?, admin_lockout_until = ? WHERE id = 1",
+            (failed, lockout),
+        )
+        conn.commit()
         return False
+    conn.execute("UPDATE pool SET admin_failed_logins = 0, admin_lockout_until = NULL WHERE id = 1")
+    conn.commit()
+    return True

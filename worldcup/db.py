@@ -36,6 +36,11 @@ def init_db() -> None:
         mcols = {r["name"] for r in conn.execute("PRAGMA table_info(member)")}
         if "owner_name" not in mcols:
             conn.execute("ALTER TABLE member ADD COLUMN owner_name TEXT")
+        pcols = {r["name"] for r in conn.execute("PRAGMA table_info(pool)")}
+        if "admin_failed_logins" not in pcols:
+            conn.execute("ALTER TABLE pool ADD COLUMN admin_failed_logins INTEGER NOT NULL DEFAULT 0")
+        if "admin_lockout_until" not in pcols:
+            conn.execute("ALTER TABLE pool ADD COLUMN admin_lockout_until TEXT")
         row = conn.execute("SELECT id FROM pool WHERE id = 1").fetchone()
         if row is None:
             conn.execute(
@@ -50,9 +55,31 @@ def init_db() -> None:
                 "VALUES (?, ?, 1, ?, ?)",
                 ("admin", _ph.hash(config.ADMIN_PIN), ts, ts),
             )
+        else:
+            _sync_admin_pin(conn)
         conn.commit()
     finally:
         conn.close()
+
+
+def _sync_admin_pin(conn: sqlite3.Connection) -> None:
+    """Make WC_ADMIN_PIN authoritative: the hash used to be written only when the DB
+    was first created, so rotating the Secret silently did nothing. If the env PIN no
+    longer matches, re-hash it into the pool row and the seeded 'admin' member."""
+    from argon2.exceptions import VerifyMismatchError
+    stored = conn.execute("SELECT admin_pin_hash FROM pool WHERE id = 1").fetchone()[0]
+    try:
+        _ph.verify(stored, config.ADMIN_PIN)
+        return
+    except VerifyMismatchError:
+        pass
+    new_hash = _ph.hash(config.ADMIN_PIN)
+    conn.execute(
+        "UPDATE pool SET admin_pin_hash = ?, admin_failed_logins = 0, admin_lockout_until = NULL "
+        "WHERE id = 1", (new_hash,))
+    conn.execute(
+        "UPDATE member SET pin_hash = ?, failed_logins = 0, lockout_until = NULL "
+        "WHERE bracket_name = 'admin' AND is_admin = 1", (_ph.hash(config.ADMIN_PIN),))
 
 
 def get_pool(conn: sqlite3.Connection) -> sqlite3.Row:
